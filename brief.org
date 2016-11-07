@@ -1,0 +1,24 @@
+#+TITLE: linux内核摘录
+#+AUTHOR: sqlfocus
+
+
+本系列文档摘录linux的内核实现，以期在深入理解内核机理的前提下，能更好
+的应用linux，并且能够借鉴好的设计思维。
+
+
+* Epoll模型
+
+
+* 参考
+  - [[https://www.kernel.org/][linux内核网站]]
+
+
+
+
+
+
+
+
+
+
+
