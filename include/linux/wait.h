@@ -20,7 +20,7 @@ int default_wake_function(wait_queue_t *wait, unsigned mode, int flags, void *ke
 struct __wait_queue {
 	unsigned int		flags;
 	void			*private;
-	wait_queue_func_t	func;
+	wait_queue_func_t	func;            /* 等待事件发生后的回调函数 */
 	struct list_head	task_list;
 };
 

@@ -1,0 +1,245 @@
+#+TITLE: epoll内核实现摘录
+#+AUTHOR: sqlfocus
+
+
+本文档摘录内核中EPOLL系统的实现部分，以期能更加深入理解异步IO的高效
+实现，也为理解其他第三方开源软件框架奠定基础。
+
+
+* 简介
+epoll是什么？按照man手册的说法：是为处理大批量句柄而作了改进的poll。当然，
+这不是2.6内核才有的，它是在2.5.44内核中被引进的(epoll(4) is a new API 
+introduced in Linux kernel 2.5.44)，它几乎具备了之前所说的一切优点，被公
+认为Linux2.6及后续版本中性能最好的多路I/O就绪通知方法。
+
+epoll只有 =epoll_create,epoll_ctl,epoll_wait= 3个系统调用;
+  #+BEGIN_EXAMPLE
+  /* 创建一个epoll的句柄
+     @param: size, 监听事件的容量
+     @ret: epfd/-1, EPOLL句柄/错误 
+   */
+  #include <sys/epoll.h>
+  int epoll_create(int size);
+  
+  1. 自从linux2.6.8之后，size参数是被忽略的(但要>0)
+  2. 创建epoll句柄后，占用一个fd值，可查看/proc/进程id/fd/，所以使用后须调用close()关闭，否则可能导致fd被耗尽
+  3. 新版的内核支持新API，epoll_create1()，可设置EPOLL_CLOEXEC标识(参考open的O_CLOEXEC)
+  #+END_EXAMPLE
+
+  #+BEGIN_EXAMPLE
+  /* 监听事件注册函数
+     @param: epfd, epoll_create()返回值
+     @param: op, 动作，EPOLL_CTL_ADD，注册新的fd到epfd中
+                       EPOLL_CTL_MOD，修改已经注册的fd的监听事件
+                       EPOLL_CTL_DEL，从epfd中删除一个fd
+     @param: fd, 需要监听的文件描述符
+     @param: event, 需要监听的事件
+              typedef union epoll_data {   /* 保存触发事件的某个文件描述符相关的数据 */
+                 void        *ptr;
+                 int          fd;
+                 uint32_t     u32;
+                 uint64_t     u64;
+              } epoll_data_t;
+              struct epoll_event {
+                 uint32_t     events;      /* 待监控事件类型的位或后的结果，EPOLLIN/
+                                                EPOLLOUT/EPOLLRDHUP/EPOLLPRI/EPOLLERR/
+                                                EPOLLHUP/EPOLLET/EPOLLONESHOT/EPOLLWAKEUP等 */
+                 epoll_data_t data;        /* 传递到后续事件处理的用户数据 */
+              };
+     @ret: 0/-1, 成功/失败
+   */
+  #include <sys/epoll.h>
+  int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
+  #+END_EXAMPLE
+
+  #+BEGIN_EXAMPLE
+  /* 收集在epoll监控的事件中已经发生的事件 
+     @param: events, [in][out], 存放发生的事件
+     @param: maxevents, 告知内核events[]数组的大小
+     @param: timeout, ms，等待超时时限
+     @ret: n/0/-1, 已发生的事件数/超时/错误(最常见的是EINTR)
+   */
+  int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout);
+  
+  1. timeout如果取值为-1, 表示永不超时；
+  2. 函数返回的三种情况：文件描述符产生了某事件、信号中断、timeout；
+  3. 返回值events[].data与epoll_ctl()传入的参数一致；
+  4. linux支持信号安全接口epoll_pwait()；
+  #+END_EXAMPLE
+
+** 代码框架
+几乎所有的epoll程序都使用下面的框架
+  #+BEGIN_EXAMPLE
+    for ( ; ; ) {  
+        nfds = epoll_wait(epfd, events, 20, 500);  
+        for(i=0;i<nfds;++i) {  
+            if(events[i].data.fd==listenfd) {        /* 有新的连接 */
+                sockfd = accept(listenfd, (sockaddr *)&clientaddr, &clilen);
+                ev.data.fd=sockfd;  
+                ev.events=EPOLLIN|EPOLLET;  
+                epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &ev);   /* 将新的fd添加到epoll的监听队列中 */
+            } else if( events[i].events & EPOLLIN ) { /* 接收到数据，读socket */
+                sockfd = ev.data.fd;
+                n = read(sockfd, line, MAXLINE);
+                ev.data.ptr = md;                              /* md为自定义类型，添加数据 */
+                ev.events=EPOLLOUT|EPOLLET;  
+                epoll_ctl(epfd,EPOLL_CTL_MOD,sockfd,&ev);      /* 修改标识符，等待下一个循环时发送数据，异步处理的精髓 */
+            } else if(events[i].events & EPOLLOUT) {  /* 有数据待发送，写socket */
+                struct myepoll_data* md = (myepoll_data*)events[i].data.ptr;    /* 取数据 */
+                sockfd = md->fd;  
+                send(sockfd, md->ptr, strlen((char*)md->ptr), 0 );              /* 发送数据 */
+                ev.data.fd=sockfd;  
+                ev.events=EPOLLIN|EPOLLET;  
+                epoll_ctl(epfd,EPOLL_CTL_MOD,sockfd,&ev);      /* 修改标识符，等待下一个循环时接收数据 */
+            } else {                                 /* 其他的处理 */
+            }  
+        }
+    }  
+  #+END_EXAMPLE
+
+** 工作模式
+epoll模型提供了2种工作模式：
+  - Edge Triggered(ET), 边沿触发
+      : ET是高速工作方式，只支持no-block式的文件描述符
+      : 只有read或write返回EAGAIN时才需要挂起等待
+      : IO事件发生后，内核仅发送一次事件通知，即使用户不对文件描述符进行任何IO操作
+  - Level Triggered(LT)，水平触发
+      : LT是缺省的工作方式，同时支持block和no-block式的文件描述符
+      : IO事件发生后，只要留存有待处理的数据，内核就会一直发送通知事件
+
+** 对比select
+  - 操控的事件数上限
+       : select可操控对象(如，socket、file)的集合，受到FD_SETSIZE的限制，linux平台大多为1024
+       : epoll可操控对象数仅受系统的句柄限制
+  - IO效率与文件描述符数目的关系
+       : 传统的select/poll另一个致命弱点就是当你拥有一个很大的socket集合，不
+       : 过由于网络延时，任一时间只有部分的socket是"活跃"的，但是select/poll
+       : 每次调用都会线性扫描全部的集合，导致效率呈现线性下降。
+       :
+       : 但是epoll不存在这个问题，它只会对"活跃"的socket进行操作---这是因为
+       : 在内核实现中epoll是根据每个fd上面的callback函数实现的。那么，只有
+       : "活跃"的socket才会主动的去调用callback函数，其他idle状态socket则不
+       : 会，在这点上，epoll实现了一个"伪"AIO，因为这时候推动力在os内核。
+       :
+       : 在一些 benchmark中，如果所有的socket基本上都是活跃的---比如一个高速
+       : LAN环境，epoll并不比select/poll有什么效率，相反，如果过多使用epoll_ctl,
+       : 效率相比还有稍微的下降。但是一旦使用idle connections模拟WAN环境,epoll
+       : 的效率就远在select/poll之上了。
+  - 内存映射技术MMAP
+       : select, 未知
+       : epoll_wait()返回就绪的文件描述符采用了内存映射技术，避免了系统调用的复制开销
+  - 待监控句柄的传递
+       : select, 每次select/poll调用都需要传递，意味着用户态到内核态的拷贝
+       : epoll，提前通过epoll_ctl传递进去，后续epoll_wait不再传递
+
+** 注意事项
+  - 避免多个线/进程操作同一个epoll对象，否则会出现惊群现象
+      : 同时唤醒多进、线程，但只有一个拿到事件，其余返回EWOULDBLOCK
+      : 可参考nginx的锁机制避免
+  - 操作epoll对象的线/进程和操作数据的线/进程是否分开，应视后续的处理效率而定
+      : 如果数据处理效率高，可以采用run-to-death的方式，处理epoll对象后，紧接着处理数据
+      : 否则应该采用pipe-line的方式，处理epoll对象后，另一个进、线程池处理数据
+  - 可在单台物理设备上部署多套服务程序，以提高并发率(比如，客户的数量)
+
+* eventpoll_init()
+在linux启动过程中调用，完成EPOLL系统的初始化，比如限制内存、分配缓存等；
+其中内存限制可以通过系统文件系统接口/proc/sys/fs/epoll/max_user_watches
+查询和设置。
+  #+BEGIN_EXAMPLE
+  -eventpoll_init()
+    -si_meminfo()                                获取系统信息，并据此设置内存上限
+    -初始化max_user_watches
+    -ep_nested_calls_init()
+    -kmem_cache_create()                         创建缓存epi_cache、pwq_cache
+  #+END_EXAMPLE
+
+* epoll_create()
+分配EPOLL系统的结构体struct eventpoll，并分配EPOLL系统的fd和file结构；
+并记录此结构到文件私有数据file->private_data。
+
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE1(epoll_create,,)               定义入口，eventpoll.c
+    -sys_epoll_create1()                         epoll_create1()入口
+      -ep_alloc()                                创建内核数据结构，struct eventpoll
+      -get_unused_fd_flags()                     创建对应的文件描述符
+      -anon_inode_getfile()                      关联file和struct eventpoll
+      -fd_install()                              关联file和fd
+  #+END_EXAMPLE
+
+* epoll_ctl()
+添加待监控的事件到EPOLL系统结构的红黑树，或修改或删除；另外，此过程会注册
+类似回调函数的通知机制，以便提高后续触发事件的能力。
+
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE4(epoll_ctl,,,,,,,,)
+    -ep_find()                                   查找是否存在待监控对象
+    -ep_insert/_remove/_modify()                 对应操作
+      -kmem_cache_alloc()                        分配对象struct epitem
+      -ep_set_ffd()                              关联到待监控的文件
+      -ep_item_poll()
+        -ep_ptable_queue_proc()
+          -init_waitqueue_func_entry()           注册事件钩子，ep_poll_callback()
+          -add_wait_queue()                      加入struct sock->sk_wq->wait
+      -list_add_tail_rcu()                       加入到待监控文件的通知链表, struct file->f_ep_links
+      -ep_rbtree_insert()                        加入红黑树struct eventpoll->rbr
+      -atomic_long_inc()                         增加监控对象计数，以便于限制内存
+  #+END_EXAMPLE
+
+* 通知机制
+当有关心的事件到达后，文件会通过epoll_ctl()注册的事件回调，把就绪事件挂接
+到对应的链表，等待epoll_wait()函数调用。
+
+  #+BEGIN_EXAMPLE
+  -tcp_v4_rcv()                                  tcp收报文入口，tcp_ipv4.c
+    -tcp_prequeue()
+      -wake_up_interruptible_sync_poll()         异步通知等待队列，struct sock->sk_wq->wait
+        -__wake_up_sync_key()
+          -__wake_up_common()
+            -wait_queue_t->func()                调用异步事件的回调，ep_poll_callback()
+  #+END_EXAMPLE
+
+  #+BEGIN_EXAMPLE
+  -ep_poll_callback()                            EPOLL事件处理回调入口，eventpoll.c
+    -情形1: 如果此时正向用户空间复制就绪的
+            监控事件，则存储入struct eventpoll->ovflist
+    -情形2: 否则，加入struct eventpoll->rdllist
+    -ep_poll_safewake()                          如果由epoll_wait()调用，则激活
+  #+END_EXAMPLE
+
+* epoll_wait()
+返回已經就就绪的事件。
+
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE4(epoll_wait,,,,,,,,)
+    -ep_poll()
+      -ep_send_events()
+        -ep_scan_ready_list()
+        --ep_send_events_proc()                 传送数据的主函数，eventpoll.c
+  #+END_EXAMPLE
+
+* 参考
+  - [[https://github.com/sqlfocus/nginx/tree/code-note][nginx代码摘录]]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
