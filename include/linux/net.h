@@ -107,21 +107,21 @@ struct socket_wq {
  *  @file: File back pointer for gc
  *  @sk: internal networking protocol agnostic socket representation
  *  @wq: wait queue for several uses
- */
+ *//* BSD socket层，与协议无关，提供一层统一用户接口；与协议相关的记录在struct sock */
 struct socket {
-	socket_state		state;
+	socket_state		state;         /* enum socket_state; 插口状态 */
 
 	kmemcheck_bitfield_begin(type);
-	short			type;
+	short			type;              /* 插口类型，对应通信操作原语，如SOCK_STREAM */
 	kmemcheck_bitfield_end(type);
 
-	unsigned long		flags;
+	unsigned long		flags;         /* 仅支持SOCK_NONBLOCK、SOCK_CLOEXEC */
 
-	struct socket_wq __rcu	*wq;
+	struct socket_wq __rcu	*wq;       /* */
 
-	struct file		*file;
-	struct sock		*sk;
-	const struct proto_ops	*ops;
+	struct file		*file;             /* 指向对应的文件结构，file->private_data指向本结构 */
+	struct sock		*sk;               /* 特定于协议的插口信息结构 */
+	const struct proto_ops	*ops;      /* 特定于协议的插口操控集合，如inet_stream_ops */
 };
 
 struct vm_area_struct;
@@ -197,7 +197,7 @@ struct proto_ops {
 #define DECLARE_SOCKADDR(type, dst, src)	\
 	type dst = ({ __sockaddr_check_size(sizeof(*dst)); (type) src; })
 
-struct net_proto_family {
+struct net_proto_family {         /* socket(domain,,)中的domain描述结构 */
 	int		family;
 	int		(*create)(struct net *net, struct socket *sock,
 				  int protocol, int kern);

@@ -903,7 +903,7 @@ struct file {
 #ifdef CONFIG_SECURITY
 	void			*f_security;
 #endif
-	/* needed for tty driver, and maybe others */
+	/* 对应实际应用的描述结构，如struct socket *sock */
 	void			*private_data;
 
 #ifdef CONFIG_EPOLL

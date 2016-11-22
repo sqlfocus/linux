@@ -1,0 +1,140 @@
+#+TITLE: linux内核插口操控摘录
+#+AUTHOR: sqlfocus
+
+
+本文档摘录linux的插口操作，以期对内核协议栈的了解更加深入，为日后工作中
+排出内核问题、性能调优等提供支撑！
+
+* 初始化流程
+网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
+操作集合。
+  #+BEGIN_EXAMPLE
+  -inet_init()                          IPv4协议栈初始化入口，~net/ipv4/af_inet.c
+    -proto_register()
+      -list_add(, &proto_list)          注册并初始化proto_list链表，如tcp_prot
+    -sock_register()
+      -rcu_assign_pointer()             注册到net_families[]，如inet_family_ops
+    -inet_add_protocol()
+      -cmpxchg()                        注册到inet_protos[]，如tcp_protocol
+    -inet_register_protosw()
+      -list_add_rcu()                   利用inetsw_array[]初始化inetsw[]
+    -ip_init()
+    -tcp_v4_init()
+    -tcp_init()
+  #+END_EXAMPLE
+
+* 全局变量
+** inet_protos[]
+此数组定义了内核支持的知名协议，当IP层上送数据时，用于查找并确定正确的四
+层接收函数，如 =tcp_protocol= 等
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/protocol.c
+  const struct net_protocol __rcu *inet_protos[MAX_INET_PROTOS] __read_mostly;
+  #+END_EXAMPLE
+
+*** tcp_protocol
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/af_inet.c
+  static const struct net_protocol tcp_protocol = {
+      ...
+  };
+  #+END_EXAMPLE
+
+** inetsw[]
+inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；网络初始化过
+程中由它初始化inetsw[]数组。
+
+它将原语类型、对应的协议、四层协议操作、插口操作、标识等相关内容关联到
+一起，组成一套完成的传输层。
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/af_inet.c
+
+  static struct list_head inetsw[SOCK_MAX];
+  static struct inet_protosw inetsw_array[] = {
+      ...
+  };
+  #+END_EXAMPLE
+
+** net_families[]
+此数组定义了内核支持的所有domain - 协议族，如 =AF_UNIX= 对应的等
+  #+BEGIN_EXAMPLE
+  ~/net/socket.c
+  static const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
+  #+END_EXAMPLE
+
+*** inet_family_ops
+  #+BEGIN_EXAMPLE
+  AF_INET域，~/net/ipv4/af_inet.c
+  static const struct net_proto_family inet_family_ops = {
+      ...
+  };
+  #+END_EXAMPLE
+
+** proto_list
+此链表定义了内核支持的所有四层协议的操控接口，如 =tcp_proto= 等
+  #+BEGIN_EXAMPLE
+  ~/net/core/sock.c
+  static LIST_HEAD(proto_list);
+  #+END_EXAMPLE
+
+*** tcp_prot
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/tcp_ipv4.c
+  struct proto tcp_prot = {
+     ...
+  };
+  #+END_EXAMPLE
+
+* socket()
+应用程序原型， =int socket(int domain, int type, int protocol);= ，建立
+通信系统的一端，并返回对应的描述符。
+
+domain指定了通信域，它用来选择用于通信的协议族(protocol family)，包括
+=AF_UNIX/AF_INET/AF_INET6/...= 
+
+type字段指定了用于通信的原语，如 =SOCK_STREAM/SOCK_DGRAM/SOCK_RAW/...=
+
+protocol字段指定插口使用的协议，一般情况下在某个通信域内，基于某通信原
+语的协议只有一种，此时此字段可以缺省为0；当然，也可能存在多种协议的可
+能，此时此字段必须为特定的值。
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE3(socket,,,,,)                 入口, ~/net/socket.c
+    1-sock_create()                             创建插口结构，并初始化
+      -__sock_create()
+        -sock_alloc()
+          -this_cpu_add(sockets_in_use, 1)      分配struct socket，增加插口计数
+        -net_families[]->create()
+        -->inet_create()                        调用对应domain的创建流程, 以AF_INET为例, ~/net/ipv4/af_inet.c
+          -sk_alloc()                           分配struct sock
+          -sock_init_data()
+            -sk_set_socket()                    建立socket和sock的关联
+          -struct sock->sk_prot->init()
+          -->tcp_prot->init()                   特定协议的信息初始化
+          -->tcp_v4_init_sock()
+            -tcp_init_sock()
+    1-sock_map_fd()                             创建文件描述符，并关联
+  #+END_EXAMPLE
+
+* bind()
+ab
+
+* listen()
+ab
+
+* accept()
+ab
+
+* connect()
+ab
+
+
+
+
+
+
+
+
+
+
+
+

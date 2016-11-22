@@ -158,7 +158,7 @@ static const struct file_operations socket_file_ops = {
 /*
  *	The protocol list. Each protocol is registered in here.
  */
-
+/* 内核支持的网络域domain结构，由sock_register()注册 */
 static DEFINE_SPINLOCK(net_family_lock);
 static const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
 
@@ -548,7 +548,7 @@ struct socket *sock_alloc(void)
 	inode->i_gid = current_fsgid();
 	inode->i_op = &sockfs_inode_ops;
 
-	this_cpu_add(sockets_in_use, 1);
+	this_cpu_add(sockets_in_use, 1);           /* 增加内存结构计数 */
 	return sock;
 }
 EXPORT_SYMBOL(sock_alloc);
@@ -1079,6 +1079,9 @@ call_kill:
 }
 EXPORT_SYMBOL(sock_wake_async);
 
+/* 创建插口结构的入口函数
+   @param, net, 本进程的网络空间(net namespace)
+   @param, kern, 是否为内核空间??? */
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
 {
@@ -1113,7 +1116,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	Allocate the socket and allow the family to set things up. if
 	 *	the protocol is 0, the family is instructed to select an appropriate
 	 *	default.
-	 */
+	 */                           /* 分配内存，并增加全局计数，sockets_in_use */
 	sock = sock_alloc();
 	if (!sock) {
 		net_warn_ratelimited("socket: no more sockets\n");
@@ -1121,7 +1124,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 				   closest posix thing */
 	}
 
-	sock->type = type;
+	sock->type = type;            /* 设置插口类型，如SOCK_STREAM等 */
 
 #ifdef CONFIG_MODULES
 	/* Attempt to load a protocol module if the find failed.
@@ -1134,7 +1137,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 		request_module("net-pf-%d", family);
 #endif
 
-	rcu_read_lock();
+	rcu_read_lock();              /* 获取对应的域描述结构，如inet_family_ops */
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
 	if (!pf)
@@ -1150,6 +1153,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/* Now protected by module ref count */
 	rcu_read_unlock();
 
+                                  /* 调用对应域的创建函数，如inet_create() */
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;
@@ -1200,6 +1204,7 @@ int sock_create_kern(struct net *net, int family, int type, int protocol, struct
 }
 EXPORT_SYMBOL(sock_create_kern);
 
+/* 创建插口的入口函数 */
 SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 {
 	int retval;
@@ -1212,18 +1217,21 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 	BUILD_BUG_ON(SOCK_CLOEXEC & SOCK_TYPE_MASK);
 	BUILD_BUG_ON(SOCK_NONBLOCK & SOCK_TYPE_MASK);
 
-	flags = type & ~SOCK_TYPE_MASK;
-	if (flags & ~(SOCK_CLOEXEC | SOCK_NONBLOCK))
-		return -EINVAL;
+    /* 获取type及指定的属性 */
+	flags = type & ~SOCK_TYPE_MASK;              /* type字段还可以指定SOCK_CLOEXEC */
+	if (flags & ~(SOCK_CLOEXEC | SOCK_NONBLOCK)) /*      SOCK_NONBLOCK两个特性，其 */
+		return -EINVAL;                          /*      他不支持 */
 	type &= SOCK_TYPE_MASK;
 
 	if (SOCK_NONBLOCK != O_NONBLOCK && (flags & SOCK_NONBLOCK))
 		flags = (flags & ~SOCK_NONBLOCK) | O_NONBLOCK;
 
+    /* 创建插口，并根据指定参数初始化 */
 	retval = sock_create(family, type, protocol, &sock);
 	if (retval < 0)
 		goto out;
 
+    /* 建立对应的文件描述符，并建立对应关系，struct file->private_data和struct socket->file互指 */
 	retval = sock_map_fd(sock, flags & (O_CLOEXEC | O_NONBLOCK));
 	if (retval < 0)
 		goto out_release;
@@ -1717,7 +1725,7 @@ SYSCALL_DEFINE4(recv, int, fd, void __user *, ubuf, size_t, size,
  *	Set a socket option. Because we don't know the option lengths we have
  *	to pass the user mode parameter for the protocols to sort out.
  */
-
+/* 设置插口属性，setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) */
 SYSCALL_DEFINE5(setsockopt, int, fd, int, level, int, optname,
 		char __user *, optval, int, optlen)
 {
@@ -1728,16 +1736,16 @@ SYSCALL_DEFINE5(setsockopt, int, fd, int, level, int, optname,
 		return -EINVAL;
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
-	if (sock != NULL) {
+	if (sock != NULL) {                    /* 查找插口结构体 */
 		err = security_socket_setsockopt(sock, level, optname);
 		if (err)
 			goto out_put;
 
-		if (level == SOL_SOCKET)
+		if (level == SOL_SOCKET)           /* 设置插口属性 */
 			err =
 			    sock_setsockopt(sock, level, optname, optval,
 					    optlen);
-		else
+		else                               /* 其他??? */
 			err =
 			    sock->ops->setsockopt(sock, level, optname, optval,
 						  optlen);

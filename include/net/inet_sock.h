@@ -173,7 +173,7 @@ struct rtable;
  * @mc_index - Multicast device index
  * @mc_list - Group array
  * @cork - info to build ip hdr on each ip frag while socket is corked
- */
+ *//* 通过聚合实现的INET socket */
 struct inet_sock {
 	/* sk and pinet6 has to be the first two members of inet_sock */
 	struct sock		sk;
@@ -184,7 +184,7 @@ struct inet_sock {
 #define inet_daddr		sk.__sk_common.skc_daddr
 #define inet_rcv_saddr		sk.__sk_common.skc_rcv_saddr
 #define inet_dport		sk.__sk_common.skc_dport
-#define inet_num		sk.__sk_common.skc_num
+#define inet_num		sk.__sk_common.skc_num  /* SOCK_RAW，原始协议的协议号 */
 
 	__be32			inet_saddr;
 	__s16			uc_ttl;
@@ -199,7 +199,7 @@ struct inet_sock {
 	__u8			mc_ttl;
 	__u8			pmtudisc;
 	__u8			recverr:1,
-				is_icsk:1,
+                is_icsk:1,                      /* 是否为面向连接的插口 */
 				freebind:1,
 				hdrincl:1,
 				mc_loop:1,

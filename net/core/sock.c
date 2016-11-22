@@ -145,7 +145,7 @@
 #include <net/busy_poll.h>
 
 static DEFINE_MUTEX(proto_list_mutex);
-static LIST_HEAD(proto_list);
+static LIST_HEAD(proto_list);                  /* 内核支持的协议集合 */
 
 /**
  * sk_ns_capable - General socket capability test
@@ -653,7 +653,7 @@ EXPORT_SYMBOL(sk_mc_loop);
  *	This is meant for all protocols to use and covers goings on
  *	at the socket level. Everything here is generic.
  */
-
+/* 插口层面的属性设置，所有的协议都应该利用此接口 */
 int sock_setsockopt(struct socket *sock, int level, int optname,
 		    char __user *optval, unsigned int optlen)
 {
@@ -676,7 +676,7 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 	if (get_user(val, (int __user *)optval))
 		return -EFAULT;
 
-	valbool = val ? 1 : 0;
+	valbool = val ? 1 : 0;            /* 转换为bool值，0/1 */
 
 	lock_sock(sk);
 
@@ -690,7 +690,7 @@ int sock_setsockopt(struct socket *sock, int level, int optname,
 	case SO_REUSEADDR:
 		sk->sk_reuse = (valbool ? SK_CAN_REUSE : SK_NO_REUSE);
 		break;
-	case SO_REUSEPORT:
+	case SO_REUSEPORT:                /* 新加的端口重用属性 */
 		sk->sk_reuseport = valbool;
 		break;
 	case SO_TYPE:
@@ -2426,7 +2426,7 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 	sk->sk_rcvbuf		=	sysctl_rmem_default;
 	sk->sk_sndbuf		=	sysctl_wmem_default;
 	sk->sk_state		=	TCP_CLOSE;
-	sk_set_socket(sk, sock);
+	sk_set_socket(sk, sock);            /* 关联BSD socket和协议sock */
 
 	sock_set_flag(sk, SOCK_ZAPPED);
 

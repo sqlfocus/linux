@@ -172,7 +172,7 @@ struct sock_common {
 	unsigned short		skc_family;
 	volatile unsigned char	skc_state;
 	unsigned char		skc_reuse:4;
-	unsigned char		skc_reuseport:1;
+	unsigned char		skc_reuseport:1;        /* SO_REUSEPORT属性 */
 	unsigned char		skc_ipv6only:1;
 	unsigned char		skc_net_refcnt:1;
 	int			skc_bound_dev_if;
@@ -304,7 +304,7 @@ struct sock_common {
   *	@sk_destruct: called at sock freeing time, i.e. when all refcnt == 0
   *	@sk_reuseport_cb: reuseport group container
   *	@sk_rcu: used during RCU grace period
-  */
+  *//* 网络层的插口结构，通过被聚合形成传输层插口结构 */
 struct sock {
 	/*
 	 * Now struct inet_timewait_sock also uses sock_common, so please just
@@ -325,15 +325,15 @@ struct sock {
 #define sk_addrpair		__sk_common.skc_addrpair
 #define sk_daddr		__sk_common.skc_daddr
 #define sk_rcv_saddr		__sk_common.skc_rcv_saddr
-#define sk_family		__sk_common.skc_family
+#define sk_family		__sk_common.skc_family                 /* AF_INET等 */
 #define sk_state		__sk_common.skc_state
-#define sk_reuse		__sk_common.skc_reuse
-#define sk_reuseport		__sk_common.skc_reuseport
+#define sk_reuse		__sk_common.skc_reuse                  /* 端口是否可重用 */
+#define sk_reuseport		__sk_common.skc_reuseport          /* SO_REUSEPORT属性 */
 #define sk_ipv6only		__sk_common.skc_ipv6only
 #define sk_net_refcnt		__sk_common.skc_net_refcnt
 #define sk_bound_dev_if		__sk_common.skc_bound_dev_if
 #define sk_bind_node		__sk_common.skc_bind_node
-#define sk_prot			__sk_common.skc_prot
+#define sk_prot			__sk_common.skc_prot                   /* tcp_prot */
 #define sk_net			__sk_common.skc_net
 #define sk_v6_daddr		__sk_common.skc_v6_daddr
 #define sk_v6_rcv_saddr	__sk_common.skc_v6_rcv_saddr
@@ -428,7 +428,7 @@ struct sock {
 	u16			sk_tsflags;
 	u8			sk_shutdown;
 	u32			sk_tskey;
-	struct socket		*sk_socket;
+	struct socket		*sk_socket;            /* 对应的bsd插口 */
 	void			*sk_user_data;
 	struct page_frag	sk_frag;
 	struct sk_buff		*sk_send_head;

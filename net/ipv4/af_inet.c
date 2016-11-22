@@ -240,7 +240,7 @@ EXPORT_SYMBOL(inet_listen);
 /*
  *	Create an inet socket.
  */
-
+/* inet_family_ops->create, 对应AF_INET域的创建函数 */
 static int inet_create(struct net *net, struct socket *sock, int protocol,
 		       int kern)
 {
@@ -255,9 +255,9 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
 
-	sock->state = SS_UNCONNECTED;
+	sock->state = SS_UNCONNECTED;                  /* 插口未连接状态 */
 
-	/* Look for the requested type/protocol pair. */
+	/* 查找是否有对应的四层传输协议？ */
 lookup_protocol:
 	err = -ESOCKTNOSUPPORT;
 	rcu_read_lock();
@@ -265,21 +265,21 @@ lookup_protocol:
 
 		err = 0;
 		/* Check the non-wild match. */
-		if (protocol == answer->protocol) {
+		if (protocol == answer->protocol) {        /* 精确匹配 */
 			if (protocol != IPPROTO_IP)
 				break;
-		} else {
+		} else {                                   /* 糢糊匹配 */
 			/* Check for the two wild cases. */
-			if (IPPROTO_IP == protocol) {
+			if (IPPROTO_IP == protocol) {              /* 情形1, protocol参数为0 */
 				protocol = answer->protocol;
 				break;
 			}
-			if (IPPROTO_IP == answer->protocol)
+			if (IPPROTO_IP == answer->protocol)        /* 情形2, 匹配项为默认匹配 */
 				break;
 		}
 		err = -EPROTONOSUPPORT;
 	}
-
+    /* 差错处理，重试，失败后加载外围模块儿再重试 */
 	if (unlikely(err)) {
 		if (try_loading_module < 2) {
 			rcu_read_unlock();
@@ -303,18 +303,18 @@ lookup_protocol:
 	}
 
 	err = -EPERM;
-	if (sock->type == SOCK_RAW && !kern &&
+	if (sock->type == SOCK_RAW && !kern &&     /* 针对SOCK_RAW类型，检查权限 */
 	    !ns_capable(net->user_ns, CAP_NET_RAW))
 		goto out_rcu_unlock;
 
-	sock->ops = answer->ops;
-	answer_prot = answer->prot;
+	sock->ops = answer->ops;                   /* 初始化向外暴露的协议无关接口, 如inet_stream_ops */
+	answer_prot = answer->prot;                /* 提取协议相关接口及标识，如tcp_prot */
 	answer_flags = answer->flags;
 	rcu_read_unlock();
 
 	WARN_ON(!answer_prot->slab);
 
-	err = -ENOBUFS;
+	err = -ENOBUFS;                            /* 分配特定于协议的struct sock结构，并初始化 */
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -323,13 +323,13 @@ lookup_protocol:
 	if (INET_PROTOSW_REUSE & answer_flags)
 		sk->sk_reuse = SK_CAN_REUSE;
 
-	inet = inet_sk(sk);
+	inet = inet_sk(sk);                        /* 聚合方式的类型强制转换 */
 	inet->is_icsk = (INET_PROTOSW_ICSK & answer_flags) != 0;
 
 	inet->nodefrag = 0;
 
 	if (SOCK_RAW == sock->type) {
-		inet->inet_num = protocol;
+		inet->inet_num = protocol;             /* 原始传输协议，记录协议号 */
 		if (IPPROTO_RAW == protocol)
 			inet->hdrincl = 1;
 	}
@@ -341,7 +341,7 @@ lookup_protocol:
 
 	inet->inet_id = 0;
 
-	sock_init_data(sock, sk);
+	sock_init_data(sock, sk);                  /* 关联bsd socket和协议sock */
 
 	sk->sk_destruct	   = inet_sock_destruct;
 	sk->sk_protocol	   = protocol;
@@ -372,8 +372,8 @@ lookup_protocol:
 		}
 	}
 
-	if (sk->sk_prot->init) {
-		err = sk->sk_prot->init(sk);
+	if (sk->sk_prot->init) {                 /* 协议相关信息初始化, 以tcp为例 */
+		err = sk->sk_prot->init(sk);         /* tcp_prot->init = tcp_v4_init_sock() */
 		if (err)
 			sk_common_release(sk);
 	}
@@ -996,12 +996,12 @@ static const struct net_proto_family inet_family_ops = {
 static struct inet_protosw inetsw_array[] =
 {
 	{
-		.type =       SOCK_STREAM,
-		.protocol =   IPPROTO_TCP,
-		.prot =       &tcp_prot,
-		.ops =        &inet_stream_ops,
+		.type =       SOCK_STREAM,         /* 传输原语类型 */
+		.protocol =   IPPROTO_TCP,         /* 此原语下具体的协议 */
+		.prot =       &tcp_prot,           /* 具体四层协议处理接口，协议相关 */
+		.ops =        &inet_stream_ops,    /* socket处理接口，协议无关 */
 		.flags =      INET_PROTOSW_PERMANENT |
-			      INET_PROTOSW_ICSK,
+                      INET_PROTOSW_ICSK,   /* 标识 */
 	},
 
 	{
@@ -1754,6 +1754,7 @@ static struct packet_type ip_packet_type __read_mostly = {
 	.func = ip_rcv,
 };
 
+/* IPv4内核协议栈初始化入口，在内核启动过程中被调用 */
 static int __init inet_init(void)
 {
 	struct inet_protosw *q;
@@ -1761,11 +1762,11 @@ static int __init inet_init(void)
 	int rc = -EINVAL;
 
 	sock_skb_cb_check_size(sizeof(struct inet_skb_parm));
-
+    
+    /* 注册特定于协议的操控接口 */
 	rc = proto_register(&tcp_prot, 1);
 	if (rc)
 		goto out;
-
 	rc = proto_register(&udp_prot, 1);
 	if (rc)
 		goto out_unregister_tcp_proto;
@@ -1781,7 +1782,7 @@ static int __init inet_init(void)
 	/*
 	 *	Tell SOCKET that we are alive...
 	 */
-
+    /* 注册AF_INET域对应的操作集合 */
 	(void)sock_register(&inet_family_ops);
 
 #ifdef CONFIG_SYSCTL
@@ -1791,7 +1792,7 @@ static int __init inet_init(void)
 	/*
 	 *	Add all the base protocols.
 	 */
-
+    /* 注册此协议族支持的协议，包括收报入口等 */
 	if (inet_add_protocol(&icmp_protocol, IPPROTO_ICMP) < 0)
 		pr_crit("%s: Cannot add ICMP protocol\n", __func__);
 	if (inet_add_protocol(&udp_protocol, IPPROTO_UDP) < 0)
@@ -1803,10 +1804,10 @@ static int __init inet_init(void)
 		pr_crit("%s: Cannot add IGMP protocol\n", __func__);
 #endif
 
-	/* Register the socket-side information for inet_create. */
+	/* 注册插口操作所需要的关联信息，包括对应的插口类型、操作接口等，
+       Register the socket-side information for inet_create. */
 	for (r = &inetsw[0]; r < &inetsw[SOCK_MAX]; ++r)
 		INIT_LIST_HEAD(r);
-
 	for (q = inetsw_array; q < &inetsw_array[INETSW_ARRAY_LEN]; ++q)
 		inet_register_protosw(q);
 
