@@ -326,13 +326,13 @@ struct sock {
 #define sk_daddr		__sk_common.skc_daddr
 #define sk_rcv_saddr		__sk_common.skc_rcv_saddr
 #define sk_family		__sk_common.skc_family                 /* AF_INET等 */
-#define sk_state		__sk_common.skc_state
+#define sk_state		__sk_common.skc_state                  /* TCP_CLOSE等 */
 #define sk_reuse		__sk_common.skc_reuse                  /* 端口是否可重用 */
 #define sk_reuseport		__sk_common.skc_reuseport          /* SO_REUSEPORT属性 */
 #define sk_ipv6only		__sk_common.skc_ipv6only
 #define sk_net_refcnt		__sk_common.skc_net_refcnt
 #define sk_bound_dev_if		__sk_common.skc_bound_dev_if
-#define sk_bind_node		__sk_common.skc_bind_node
+#define sk_bind_node		__sk_common.skc_bind_node          /* hash节点，连接入绑定的hash链表 */
 #define sk_prot			__sk_common.skc_prot                   /* tcp_prot */
 #define sk_net			__sk_common.skc_net
 #define sk_v6_daddr		__sk_common.skc_v6_daddr

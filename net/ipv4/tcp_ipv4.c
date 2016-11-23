@@ -2363,7 +2363,7 @@ struct proto tcp_prot = {
 	.release_cb		= tcp_release_cb,
 	.hash			= inet_hash,
 	.unhash			= inet_unhash,
-	.get_port		= inet_csk_get_port,
+	.get_port		= inet_csk_get_port,          /* 获取本地源端口号 */
 	.enter_memory_pressure	= tcp_enter_memory_pressure,
 	.stream_memory_free	= tcp_stream_memory_free,
 	.sockets_allocated	= &tcp_sockets_allocated,
@@ -2378,7 +2378,7 @@ struct proto tcp_prot = {
 	.slab_flags		= SLAB_DESTROY_BY_RCU,
 	.twsk_prot		= &tcp_timewait_sock_ops,
 	.rsk_prot		= &tcp_request_sock_ops,
-	.h.hashinfo		= &tcp_hashinfo,
+	.h.hashinfo		= &tcp_hashinfo,              /* 插口hash队列 */
 	.no_autobind		= true,
 #ifdef CONFIG_COMPAT
 	.compat_setsockopt	= compat_tcp_setsockopt,

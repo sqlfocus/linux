@@ -1357,7 +1357,7 @@ out:
  *	We move the socket address to kernel space before we call
  *	the protocol layer (having also checked the address is ok).
  */
-
+/* bind()系统调用的入口点 */
 SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
 {
 	struct socket *sock;
@@ -1365,16 +1365,16 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
 	int err, fput_needed;
 
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
-	if (sock) {
+	if (sock) {                                    /* 查找对应的bsd插口 */
 		err = move_addr_to_kernel(umyaddr, addrlen, &address);
-		if (err >= 0) {
+		if (err >= 0) {                            /* 参数放置到内核地址空间 */
 			err = security_socket_bind(sock,
 						   (struct sockaddr *)&address,
 						   addrlen);
 			if (!err)
-				err = sock->ops->bind(sock,
-						      (struct sockaddr *)
-						      &address, addrlen);
+				err = sock->ops->bind(sock,        /* 调用具体协议的操控接口 */
+                                      (struct sockaddr *)  /* 以tcp为例，inet_stream_ops->bind() */
+                                      &address, addrlen);  /* = inet_bind() */
 		}
 		fput_light(sock->file, fput_needed);
 	}

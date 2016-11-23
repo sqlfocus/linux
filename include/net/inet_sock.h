@@ -182,14 +182,14 @@ struct inet_sock {
 #endif
 	/* Socket demultiplex comparisons on incoming packets. */
 #define inet_daddr		sk.__sk_common.skc_daddr
-#define inet_rcv_saddr		sk.__sk_common.skc_rcv_saddr
+#define inet_rcv_saddr		sk.__sk_common.skc_rcv_saddr  /* 绑定的本端IP地址 */
 #define inet_dport		sk.__sk_common.skc_dport
 #define inet_num		sk.__sk_common.skc_num  /* SOCK_RAW，原始协议的协议号 */
 
-	__be32			inet_saddr;
+	__be32			inet_saddr;                 /* 发送报文时，本端IP地址；非特殊情况=inet_rcv_saddr */
 	__s16			uc_ttl;
 	__u16			cmsg_flags;
-	__be16			inet_sport;
+	__be16			inet_sport;                 /* 发送报文时，本地源端口 */
 	__u16			inet_id;
 
 	struct ip_options_rcu __rcu	*inet_opt;
@@ -206,7 +206,7 @@ struct inet_sock {
 				transparent:1,
 				mc_all:1,
 				nodefrag:1;
-	__u8			bind_address_no_port:1;
+	__u8			bind_address_no_port:1;     /* 是否允许绑定端口号为0的地址; 默认值0, 表示允许 */
 	__u8			rcv_tos;
 	__u8			convert_csum;
 	int			uc_index;

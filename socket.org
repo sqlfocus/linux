@@ -24,7 +24,7 @@
   #+END_EXAMPLE
 
 * 全局变量
-** inet_protos[]
+** ~inet_protos[]~
 此数组定义了内核支持的知名协议，当IP层上送数据时，用于查找并确定正确的四
 层接收函数，如 =tcp_protocol= 等
   #+BEGIN_EXAMPLE
@@ -32,15 +32,15 @@
   const struct net_protocol __rcu *inet_protos[MAX_INET_PROTOS] __read_mostly;
   #+END_EXAMPLE
 
-*** tcp_protocol
+*** ~tcp_protocol~
   #+BEGIN_EXAMPLE
   ~/net/ipv4/af_inet.c
   static const struct net_protocol tcp_protocol = {
       ...
   };
   #+END_EXAMPLE
-
-** inetsw[]
+    
+** ~inetsw[]~
 inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；网络初始化过
 程中由它初始化inetsw[]数组。
 
@@ -55,14 +55,14 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
-** net_families[]
+** ~net_families[]~
 此数组定义了内核支持的所有domain - 协议族，如 =AF_UNIX= 对应的等
   #+BEGIN_EXAMPLE
   ~/net/socket.c
   static const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
   #+END_EXAMPLE
 
-*** inet_family_ops
+*** ~inet_family_ops~
   #+BEGIN_EXAMPLE
   AF_INET域，~/net/ipv4/af_inet.c
   static const struct net_proto_family inet_family_ops = {
@@ -70,14 +70,14 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
-** proto_list
+** ~proto_list~
 此链表定义了内核支持的所有四层协议的操控接口，如 =tcp_proto= 等
   #+BEGIN_EXAMPLE
   ~/net/core/sock.c
   static LIST_HEAD(proto_list);
   #+END_EXAMPLE
 
-*** tcp_prot
+*** ~tcp_prot~
   #+BEGIN_EXAMPLE
   ~/net/ipv4/tcp_ipv4.c
   struct proto tcp_prot = {
@@ -116,8 +116,35 @@ protocol字段指定插口使用的协议，一般情况下在某个通信域内
   #+END_EXAMPLE
 
 * bind()
-ab
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE3(bind,,,,,)                   bind()入口，~/net/socket.c
+    -struct socket->ops->bind()
+    -->inet_stream_ops->bind()
+    -->inet_bind()                              TCP绑定入口，~/net/ipv4/af_inet.c
+      -struct sock->sk_prot->bind()             TCP为NULL
+      -赋值struct inet_sock->inet_rcv_saddr     本地监听地址
+      -赋值->inet_saddr                         发送时，本端地址
+      -struct sock->sk_prot->get_port()
+      -->tcp_prot->get_port()
+      -->inet_csk_get_port()                    验证绑定有效性，获取绑定端口，inet_connection_sock.c
+      -赋值struct inet_sock->inet_sport         发送时，本地源端口
+  #+END_EXAMPLE
 
+** 端口绑定算法
+检测插口选用的端口是否冲突 
+ 1. Sockets bound to different interfaces may share a local port.
+    Failing that, goto test 2;
+      : 不同接口可共享端口
+ 2. If all sockets have ~sk->sk_reuse~ set, and none of them are in
+    ~TCP_LISTEN~ state, the port may be shared.
+    Failing that, goto test 3;
+      : 相同接口，但都设置了地址重用(~SO_REUSEADDR~)，且都不在 ~TCP_LISTEN~ 状态
+ 3. If all sockets are bound to a specific ~inet_sk(sk)->rcv_saddr~ local
+    address, and none of them are the same, the port may be
+    shared;
+      : 相同接口，未设置端口重用，但绑定到不同的本地地址
+ 4. Failing this, the port cannot be shared.
+ 
 * listen()
 ab
 

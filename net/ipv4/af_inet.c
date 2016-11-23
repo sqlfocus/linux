@@ -418,6 +418,7 @@ int inet_release(struct socket *sock)
 }
 EXPORT_SYMBOL(inet_release);
 
+/* 特定于AF_INET TCP的bind()操作 */
 int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 {
 	struct sockaddr_in *addr = (struct sockaddr_in *)uaddr;
@@ -429,7 +430,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	u32 tb_id = RT_TABLE_LOCAL;
 	int err;
 
-	/* If the socket has its own bind function then use it. (RAW) */
+	/* 如果特定协议具有bind接口，调用它完成动作；对于tcp_prot，无此接口 */
 	if (sk->sk_prot->bind) {
 		err = sk->sk_prot->bind(sk, uaddr, addr_len);
 		goto out;
@@ -437,7 +438,8 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	err = -EINVAL;
 	if (addr_len < sizeof(struct sockaddr_in))
 		goto out;
-
+    
+    /* 未指定domain类型，则绑定的地址必须为INADDR_ANY，否则报错!!! */
 	if (addr->sin_family != AF_INET) {
 		/* Compatibility games : accept AF_UNSPEC (mapped to AF_INET)
 		 * only if s_addr is INADDR_ANY.
@@ -467,6 +469,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	    chk_addr_ret != RTN_BROADCAST)
 		goto out;
 
+    /* 绑定1~1023端口，需要高权限 */
 	snum = ntohs(addr->sin_port);
 	err = -EACCES;
 	if (snum && snum < PROT_SOCK &&
@@ -487,11 +490,13 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	if (sk->sk_state != TCP_CLOSE || inet->inet_num)
 		goto out_release_sock;
 
+    /* 赋值到本地监听地址，发送报文时的本地地址 */
 	inet->inet_rcv_saddr = inet->inet_saddr = addr->sin_addr.s_addr;
 	if (chk_addr_ret == RTN_MULTICAST || chk_addr_ret == RTN_BROADCAST)
 		inet->inet_saddr = 0;  /* Use device */
 
-	/* Make sure we are allowed to bind here. */
+	/* 检查绑定合法性，以TCP为例，调用tcp_prot->get_port()
+       -->inet_csk_get_port() */
 	if ((snum || !inet->bind_address_no_port) &&
 	    sk->sk_prot->get_port(sk, snum)) {
 		inet->inet_saddr = inet->inet_rcv_saddr = 0;
@@ -499,6 +504,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		goto out_release_sock;
 	}
 
+    /* 赋值本地源端口 */
 	if (inet->inet_rcv_saddr)
 		sk->sk_userlocks |= SOCK_BINDADDR_LOCK;
 	if (snum)

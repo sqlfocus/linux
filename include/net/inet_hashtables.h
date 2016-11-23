@@ -47,13 +47,13 @@ struct inet_ehash_bucket {
  * an application.  In essence:
  *
  *	1) Sockets bound to different interfaces may share a local port.
- *	   Failing that, goto test 2.
+ *	   Failing that, goto test 2.  不通接口可共享端口
  *	2) If all sockets have sk->sk_reuse set, and none of them are in
  *	   TCP_LISTEN state, the port may be shared.
- *	   Failing that, goto test 3.
+ *	   Failing that, goto test 3.  相同接口，但都设置了地址重用(SO_REUSEADDR)，且都不在TCP_LISTEN状态
  *	3) If all sockets are bound to a specific inet_sk(sk)->rcv_saddr local
  *	   address, and none of them are the same, the port may be
- *	   shared.
+ *	   shared.                     相同接口，未设置端口重用，但绑定到不同的本地地址
  *	   Failing this, the port cannot be shared.
  *
  * The interesting point, is test #2.  This is what an FTP server does
@@ -75,14 +75,14 @@ struct inet_ehash_bucket {
  * ports are created in O(1) time?  I thought so. ;-)	-DaveM
  */
 struct inet_bind_bucket {
-	possible_net_t		ib_net;
-	unsigned short		port;
-	signed char		fastreuse;
-	signed char		fastreuseport;
-	kuid_t			fastuid;
-	int			num_owners;
-	struct hlist_node	node;
-	struct hlist_head	owners;
+	possible_net_t		ib_net;       /* 对应的网络空间 */
+	unsigned short		port;         /* 绑定的端口号 */
+	signed char		fastreuse;        /* SO_REUSEADDR，用于快速判断 */
+	signed char		fastreuseport;    /* SO_REUSEPORT，用于快速判断 */
+	kuid_t			fastuid;          /* UID，用于快速判断 */
+	int			num_owners;           /* owners长度 */
+	struct hlist_node	node;         /* 连接入tcp_prot->h.hashinfo->bhash的节点 */
+	struct hlist_head	owners;       /* 拥有此绑定的插口hash链表 */
 };
 
 static inline struct net *ib_net(struct inet_bind_bucket *ib)
@@ -115,7 +115,7 @@ struct inet_hashinfo {
 	 *
 	 *          TCP_ESTABLISHED <= sk->sk_state < TCP_CLOSE
 	 *
-	 */
+	 *//* 非TCP_LISTEN状态的队列，五元组??? */
 	struct inet_ehash_bucket	*ehash;
 	spinlock_t			*ehash_locks;
 	unsigned int			ehash_mask;
@@ -123,7 +123,7 @@ struct inet_hashinfo {
 
 	/* Ok, let's try this, I give up, we do need a local binding
 	 * TCP hash as well as the others for fast bind/connect.
-	 */
+	 *//* 本地绑定的插口队列，key = 端口号 + 网络空间 */
 	struct inet_bind_hashbucket	*bhash;
 
 	unsigned int			bhash_size;
@@ -140,7 +140,7 @@ struct inet_hashinfo {
 	/* All sockets in TCP_LISTEN state will be in here.  This is the only
 	 * table where wildcard'd TCP sockets can exist.  Hash function here
 	 * is just local port number.
-	 */
+	 *//* 处于TCP_LISTEN状态的队列，监听IP+port??? 允许糢糊匹配的项 */
 	struct inet_listen_hashbucket	listening_hash[INET_LHTABLE_SIZE]
 					____cacheline_aligned_in_smp;
 };

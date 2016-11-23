@@ -91,7 +91,7 @@ struct inet_connection_sock {
 	/* inet_sock has to be the first member! */
 	struct inet_sock	  icsk_inet;
 	struct request_sock_queue icsk_accept_queue;
-	struct inet_bind_bucket	  *icsk_bind_hash;
+	struct inet_bind_bucket	  *icsk_bind_hash;    /* 对应的端口绑定结构 */
 	unsigned long		  icsk_timeout;
  	struct timer_list	  icsk_retransmit_timer;
  	struct timer_list	  icsk_delack_timer;

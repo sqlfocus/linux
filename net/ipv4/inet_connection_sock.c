@@ -44,6 +44,17 @@ void inet_get_local_port_range(struct net *net, int *low, int *high)
 }
 EXPORT_SYMBOL(inet_get_local_port_range);
 
+/* 检测插口选用的端口是否冲突 
+ *	1) Sockets bound to different interfaces may share a local port.
+ *	   Failing that, goto test 2.  不同接口可共享端口
+ *	2) If all sockets have sk->sk_reuse set, and none of them are in
+ *	   TCP_LISTEN state, the port may be shared.
+ *	   Failing that, goto test 3.  相同接口，但都设置了地址重用(SO_REUSEADDR)，且都不在TCP_LISTEN状态
+ *	3) If all sockets are bound to a specific inet_sk(sk)->rcv_saddr local
+ *	   address, and none of them are the same, the port may be
+ *	   shared.                     相同接口，未设置端口重用，但绑定到不同的本地地址
+ *	   Failing this, the port cannot be shared.
+ */
 int inet_csk_bind_conflict(const struct sock *sk,
 			   const struct inet_bind_bucket *tb, bool relax)
 {
@@ -58,15 +69,14 @@ int inet_csk_bind_conflict(const struct sock *sk,
 	 * in tb->owners list belong to the same net - the
 	 * one this bucket belongs to.
 	 */
-
-	sk_for_each_bound(sk2, &tb->owners) {
+	sk_for_each_bound(sk2, &tb->owners) {  /* 找到冲突，break */
 		if (sk != sk2 &&
 		    !inet_v6_ipv6only(sk2) &&
 		    (!sk->sk_bound_dev_if ||
-		     !sk2->sk_bound_dev_if ||
+		     !sk2->sk_bound_dev_if ||             /* 绑定到了相同的接口 */
 		     sk->sk_bound_dev_if == sk2->sk_bound_dev_if)) {
 			if ((!reuse || !sk2->sk_reuse ||
-			    sk2->sk_state == TCP_LISTEN) &&
+                 sk2->sk_state == TCP_LISTEN) &&      /* 未指定地址重用或端口重用 */
 			    (!reuseport || !sk2->sk_reuseport ||
 			     rcu_access_pointer(sk->sk_reuseport_cb) ||
 			     (sk2->sk_state != TCP_TIME_WAIT &&
@@ -74,38 +84,39 @@ int inet_csk_bind_conflict(const struct sock *sk,
 
 				if (!sk2->sk_rcv_saddr || !sk->sk_rcv_saddr ||
 				    sk2->sk_rcv_saddr == sk->sk_rcv_saddr)
-					break;
+					break;                            /* 具有相同的本端IP地址 */
 			}
 			if (!relax && reuse && sk2->sk_reuse &&
-			    sk2->sk_state != TCP_LISTEN) {
-
-				if (!sk2->sk_rcv_saddr || !sk->sk_rcv_saddr ||
-				    sk2->sk_rcv_saddr == sk->sk_rcv_saddr)
+			    sk2->sk_state != TCP_LISTEN) {        /* 非宽松情况下，即便指定 */
+                                                      /* 了地址重用，如果插口处 */
+				if (!sk2->sk_rcv_saddr || !sk->sk_rcv_saddr || /* TCP_LISTEN状 */
+				    sk2->sk_rcv_saddr == sk->sk_rcv_saddr) /* 也冲突 */
 					break;
 			}
 		}
 	}
-	return sk2 != NULL;
+	return sk2 != NULL;                    /* break出来，则冲突 */
 }
 EXPORT_SYMBOL_GPL(inet_csk_bind_conflict);
 
 /* Obtain a reference to a local port for the given sock,
  * if snum is zero it means select any available local port.
  * We try to allocate an odd port (and leave even ports for connect())
- */
+ *//* 为插口分配本地端口，如果参数snum为0, 则表示任意选择可用端口 */
 int inet_csk_get_port(struct sock *sk, unsigned short snum)
 {
-	bool reuse = sk->sk_reuse && sk->sk_state != TCP_LISTEN;
-	struct inet_hashinfo *hinfo = sk->sk_prot->h.hashinfo;
+	bool reuse = sk->sk_reuse && sk->sk_state != TCP_LISTEN;  /* 地址可重用(SO_REUSEADDR) */
+	struct inet_hashinfo *hinfo = sk->sk_prot->h.hashinfo;    /* 维护TCP的插口hash队列 */
 	int ret = 1, attempts = 5, port = snum;
 	int smallest_size = -1, smallest_port;
 	struct inet_bind_hashbucket *head;
 	struct net *net = sock_net(sk);
 	int i, low, high, attempt_half;
 	struct inet_bind_bucket *tb;
-	kuid_t uid = sock_i_uid(sk);
+	kuid_t uid = sock_i_uid(sk);                              /* 插口的用户ID */
 	u32 remaining, offset;
 
+    /* 情形1: 指定了绑定的端口号 */
 	if (port) {
 have_port:
 		head = &hinfo->bhash[inet_bhashfn(net, port,
@@ -117,6 +128,12 @@ have_port:
 
 		goto tb_not_found;
 	}
+    
+    /* 情形2: 未指定端口号，任意选择
+          1) 未设置地址重用，则遍历所有接口
+          2) 设置了地址重用，则先遍历可用端口的彽半部分，再遍历高半部分；
+                   每部分，先遍历奇数端口，再遍历偶数端口；
+                   每部分遍历时，从中间的随机位置开始，向后然后回绕，循环遍历 */
 again:
 	attempt_half = (sk->sk_reuse == SK_CAN_REUSE) ? 1 : 0;
 other_half_scan:
@@ -124,19 +141,19 @@ other_half_scan:
 	high++; /* [32768, 60999] -> [32768, 61000[ */
 	if (high - low < 4)
 		attempt_half = 0;
-	if (attempt_half) {
+	if (attempt_half) {                    /* 决定尝试的端口范围 */
 		int half = low + (((high - low) >> 2) << 1);
 
-		if (attempt_half == 1)
+		if (attempt_half == 1)             /* 优先算择前半部分 */
 			high = half;
 		else
-			low = half;
+			low = half;                    /* 后续(attempt_half=2)选择后半部分 */
 	}
-	remaining = high - low;
+	remaining = high - low;                /* 不允许地址重用时，遍历所有 */
 	if (likely(remaining > 1))
 		remaining &= ~1U;
 
-	offset = prandom_u32() % remaining;
+	offset = prandom_u32() % remaining;    /* 优先使用奇数，因为__inet_hash_connect()优先使用偶数??? */
 	/* __inet_hash_connect() favors ports having @low parity
 	 * We do the opposite to not pollute connect() users.
 	 */
@@ -145,12 +162,12 @@ other_half_scan:
 	smallest_port = low; /* avoid compiler warning */
 
 other_parity_scan:
-	port = low + offset;
+	port = low + offset;                   /* 从选择的端口范围的后半部分开始遍历 */
 	for (i = 0; i < remaining; i += 2, port += 2) {
-		if (unlikely(port >= high))
+		if (unlikely(port >= high))        /* 此处能保证前半部分被遍历 */
 			port -= remaining;
 		if (inet_is_local_reserved_port(net, port))
-			continue;
+			continue;                      /* 放弃保留端口 */
 		head = &hinfo->bhash[inet_bhashfn(net, port,
 						  hinfo->bhash_size)];
 		spin_lock_bh(&head->lock);
@@ -163,27 +180,27 @@ other_parity_scan:
 				      uid_eq(tb->fastuid, uid))) &&
 				    (tb->num_owners < smallest_size || smallest_size == -1)) {
 					smallest_size = tb->num_owners;
-					smallest_port = port;
+					smallest_port = port;  /* 流量尽量在所有端口负载均担 */
 				}
 				if (!inet_csk(sk)->icsk_af_ops->bind_conflict(sk, tb, false))
-					goto tb_found;
-				goto next_port;
-			}
+					goto tb_found;         /* ipv4_specific->bind_conflict() */
+				goto next_port;            /* -->inet_csk_bind_conflict() */
+			}                              /* 检测冲突 */
 		goto tb_not_found;
 next_port:
 		spin_unlock_bh(&head->lock);
-		cond_resched();
+		cond_resched();                    /* 适当调度，避免其他进程饿死 */
 	}
 
 	if (smallest_size != -1) {
 		port = smallest_port;
-		goto have_port;
+		goto have_port;                    /* 找到可用端口 */
 	}
 	offset--;
 	if (!(offset & 1))
-		goto other_parity_scan;
+		goto other_parity_scan;            /* 遍历偶数端口 */
 
-	if (attempt_half == 1) {
+	if (attempt_half == 1) {               /* 尝试另一半端口 */
 		/* OK we now try the upper half of the range */
 		attempt_half = 2;
 		goto other_half_scan;
@@ -191,37 +208,40 @@ next_port:
 	return ret;
 
 tb_not_found:
+    /* 创建新的绑定结构，并初始化 */
 	tb = inet_bind_bucket_create(hinfo->bind_bucket_cachep,
 				     net, head, port);
 	if (!tb)
 		goto fail_unlock;
 tb_found:
+    /* 查找到了绑定结构，非创建；即通过goto到此，而非通过tb_not_found到此 */
 	if (!hlist_empty(&tb->owners)) {
 		if (sk->sk_reuse == SK_FORCE_REUSE)
 			goto success;
 
-		if (((tb->fastreuse > 0 && reuse) ||
+		if (((tb->fastreuse > 0 && reuse) ||          /* 快速判断 */
 		     (tb->fastreuseport > 0 &&
 		      !rcu_access_pointer(sk->sk_reuseport_cb) &&
 		      sk->sk_reuseport && uid_eq(tb->fastuid, uid))) &&
 		    smallest_size == -1)
 			goto success;
 		if (inet_csk(sk)->icsk_af_ops->bind_conflict(sk, tb, true)) {
-			if ((reuse ||
+			if ((reuse ||                             /* 慢速判断 */
 			     (tb->fastreuseport > 0 &&
 			      sk->sk_reuseport &&
 			      !rcu_access_pointer(sk->sk_reuseport_cb) &&
 			      uid_eq(tb->fastuid, uid))) &&
 			    smallest_size != -1 && --attempts >= 0) {
 				spin_unlock_bh(&head->lock);
-				goto again;
+				goto again;                                  /* 冲突重试 */
 			}
 			goto fail_unlock;
 		}
-		if (!reuse)
-			tb->fastreuse = 0;
-		if (!sk->sk_reuseport || !uid_eq(tb->fastuid, uid))
-			tb->fastreuseport = 0;
+		if (!reuse)                                   /* 不冲突，但申请端口方 */
+			tb->fastreuse = 0;                        /* 未设置地址重用，则清 */
+		if (!sk->sk_reuseport || !uid_eq(tb->fastuid, uid)) /* 除快速判断标识 */
+			tb->fastreuseport = 0;                    /* 后续只能走慢速匹配 */
+    /* 新创建的绑定结构 */
 	} else {
 		tb->fastreuse = reuse;
 		if (sk->sk_reuseport) {
@@ -232,6 +252,7 @@ tb_found:
 		}
 	}
 success:
+    /* 绑定成功，建立插口和此绑定节点的关联 */
 	if (!inet_csk(sk)->icsk_bind_hash)
 		inet_bind_hash(sk, tb, port);
 	WARN_ON(inet_csk(sk)->icsk_bind_hash != tb);

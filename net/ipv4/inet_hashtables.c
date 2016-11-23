@@ -94,10 +94,10 @@ void inet_bind_bucket_destroy(struct kmem_cache *cachep, struct inet_bind_bucket
 void inet_bind_hash(struct sock *sk, struct inet_bind_bucket *tb,
 		    const unsigned short snum)
 {
-	inet_sk(sk)->inet_num = snum;
-	sk_add_bind_node(sk, &tb->owners);
+	inet_sk(sk)->inet_num = snum;      /* 赋值本地端口号 */
+	sk_add_bind_node(sk, &tb->owners); /* 插口链接入对应的hash entry */
 	tb->num_owners++;
-	inet_csk(sk)->icsk_bind_hash = tb;
+	inet_csk(sk)->icsk_bind_hash = tb; /* 记录对应的hash entry */
 }
 
 /*
