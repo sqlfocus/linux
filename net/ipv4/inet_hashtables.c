@@ -42,7 +42,8 @@ static u32 inet_ehashfn(const struct net *net, const __be32 laddr,
 
 /* This function handles inet_sock, but also timewait and request sockets
  * for IPv4/IPv6.
- */
+ *//* 五元组hash，因为协议已知，退化为四元组；另外，加入了网络空间，以隔离
+      不同的网络 */
 u32 sk_ehashfn(const struct sock *sk)
 {
 #if IS_ENABLED(CONFIG_IPV6)
@@ -391,7 +392,7 @@ static u32 inet_sk_port_offset(const struct sock *sk)
 
 /* insert a socket into ehash, and eventually remove another one
  * (The another one can be a SYN_RECV or TIMEWAIT
- */
+ *//* 插口struct sock插入"已建立"hash队列 */
 bool inet_ehash_insert(struct sock *sk, struct sock *osk)
 {
 	struct inet_hashinfo *hashinfo = sk->sk_prot->h.hashinfo;
@@ -402,29 +403,30 @@ bool inet_ehash_insert(struct sock *sk, struct sock *osk)
 
 	WARN_ON_ONCE(!sk_unhashed(sk));
 
-	sk->sk_hash = sk_ehashfn(sk);
+	sk->sk_hash = sk_ehashfn(sk);      /* 计算5元组hash值 */
 	head = inet_ehash_bucket(hashinfo, sk->sk_hash);
-	list = &head->chain;
+	list = &head->chain;               /* 获取hash数组的冲突链 */
 	lock = inet_ehash_lockp(hashinfo, sk->sk_hash);
 
-	spin_lock(lock);
+	spin_lock(lock);                   /* 加锁 */
 	if (osk) {
 		WARN_ON_ONCE(sk->sk_hash != osk->sk_hash);
 		ret = sk_nulls_del_node_init_rcu(osk);
 	}
-	if (ret)
+	if (ret)                           /* 加入队列，tcp_prot->h.hashinfo->ehash[] */
 		__sk_nulls_add_node_rcu(sk, list);
 	spin_unlock(lock);
 	return ret;
 }
 
+/* 非监听状态插口加入hash表，tcp_prot->h.hashinfo->ehash[] */
 bool inet_ehash_nolisten(struct sock *sk, struct sock *osk)
 {
 	bool ok = inet_ehash_insert(sk, osk);
 
-	if (ok) {
+	if (ok) {                          /* 增加正在使用插口计数，用于/proc展示 */
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
-	} else {
+	} else {                           /* 失败，状态回滚 */
 		percpu_counter_inc(sk->sk_prot->orphan_count);
 		sk->sk_state = TCP_CLOSE;
 		sock_set_flag(sk, SOCK_DEAD);
@@ -470,10 +472,13 @@ int __inet_hash(struct sock *sk, struct sock *osk,
 	struct inet_listen_hashbucket *ilb;
 	int err = 0;
 
+    /* 情形1: 非监听状态；加入hash队列tcp_prot->h.hashinfo->ehash[] */
 	if (sk->sk_state != TCP_LISTEN) {
 		inet_ehash_nolisten(sk, osk);
 		return 0;
 	}
+
+    /* 情形2: 监听状态；加入队列tcp_prot->h.hashinfo->listening_hash[] */
 	WARN_ON(!sk_unhashed(sk));
 	ilb = &hashinfo->listening_hash[inet_sk_listen_hashfn(sk)];
 
@@ -486,9 +491,9 @@ int __inet_hash(struct sock *sk, struct sock *osk,
 	if (IS_ENABLED(CONFIG_IPV6) && sk->sk_reuseport &&
 		sk->sk_family == AF_INET6)
 		hlist_add_tail_rcu(&sk->sk_node, &ilb->head);
-	else
+	else                                /* 加入队列 */
 		hlist_add_head_rcu(&sk->sk_node, &ilb->head);
-	sock_set_flag(sk, SOCK_RCU_FREE);
+	sock_set_flag(sk, SOCK_RCU_FREE);   /* 增加正使用的插口计数，用于/proc展示 */
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
 unlock:
 	spin_unlock(&ilb->lock);
@@ -500,7 +505,7 @@ EXPORT_SYMBOL(__inet_hash);
 int inet_hash(struct sock *sk)
 {
 	int err = 0;
-
+    /* 根据struct sock状态，插入到不同的hash队列 */
 	if (sk->sk_state != TCP_CLOSE) {
 		local_bh_disable();
 		err = __inet_hash(sk, NULL, ipv4_rcv_saddr_equal);

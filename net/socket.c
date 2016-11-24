@@ -1386,7 +1386,7 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
  *	necessary for a listen, and if that works, we mark the socket as
  *	ready for listening.
  */
-
+/* 系统调用listen()入口 */
 SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 {
 	struct socket *sock;
@@ -1396,12 +1396,12 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock) {
 		somaxconn = sock_net(sock->sk)->core.sysctl_somaxconn;
-		if ((unsigned int)backlog > somaxconn)
-			backlog = somaxconn;
+		if ((unsigned int)backlog > somaxconn) /* 参数限制，不能大于net.core.somaxconn */
+			backlog = somaxconn;               /* 此值可通过指令"sysctl -a|grep somaxconn"查看 */
 
 		err = security_socket_listen(sock, backlog);
-		if (!err)
-			err = sock->ops->listen(sock, backlog);
+		if (!err)                              /* inet_stream_ops->listen() = inet_listen() */
+			err = sock->ops->listen(sock, backlog);   /* SOCK_STREAM原语的监听动作 */
 
 		fput_light(sock->file, fput_needed);
 	}

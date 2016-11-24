@@ -311,14 +311,14 @@ struct sock {
 	 * don't add nothing before this first member (__sk_common) --acme
 	 */
 	struct sock_common	__sk_common;
-#define sk_node			__sk_common.skc_node
-#define sk_nulls_node		__sk_common.skc_nulls_node
+#define sk_node			__sk_common.skc_node                   /* 加入监听队列的节点，tcp_prot->h.hashinfo->listening_hash[] */
+#define sk_nulls_node		__sk_common.skc_nulls_node         /* 加入established队列的节点，tcp_prot->h.hashinfo->ehash[] */
 #define sk_refcnt		__sk_common.skc_refcnt
 #define sk_tx_queue_mapping	__sk_common.skc_tx_queue_mapping
 
 #define sk_dontcopy_begin	__sk_common.skc_dontcopy_begin
 #define sk_dontcopy_end		__sk_common.skc_dontcopy_end
-#define sk_hash			__sk_common.skc_hash
+#define sk_hash			__sk_common.skc_hash                   /* established五元组，IP+PORT+网络空间 */
 #define sk_portpair		__sk_common.skc_portpair
 #define sk_num			__sk_common.skc_num
 #define sk_dport		__sk_common.skc_dport
@@ -339,7 +339,7 @@ struct sock {
 #define sk_v6_rcv_saddr	__sk_common.skc_v6_rcv_saddr
 #define sk_cookie		__sk_common.skc_cookie
 #define sk_incoming_cpu		__sk_common.skc_incoming_cpu
-#define sk_flags		__sk_common.skc_flags
+#define sk_flags		__sk_common.skc_flags                  /* enum sock_flags, 如SOCK_DEAD */
 #define sk_rxhash		__sk_common.skc_rxhash
 
 	socket_lock_t		sk_lock;
@@ -415,8 +415,8 @@ struct sock {
 	rwlock_t		sk_callback_lock;
 	int			sk_err,
 				sk_err_soft;
-	u32			sk_ack_backlog;
-	u32			sk_max_ack_backlog;
+	u32			sk_ack_backlog;                /* backlog连接计数 */
+	u32			sk_max_ack_backlog;            /* backlog连接上限，对应listen(, backlog) */
 	__u32			sk_priority;
 	__u32			sk_mark;
 	struct pid		*sk_peer_pid;
@@ -1050,7 +1050,7 @@ struct proto {
 	unsigned int		obj_size;
 	int			slab_flags;
 
-	struct percpu_counter	*orphan_count;
+	struct percpu_counter	*orphan_count;      /* orphan状态的struct sock计数 */
 
 	struct request_sock_ops	*rsk_prot;
 	struct timewait_sock_ops *twsk_prot;

@@ -90,7 +90,7 @@ struct inet_connection_sock_af_ops {
 struct inet_connection_sock {
 	/* inet_sock has to be the first member! */
 	struct inet_sock	  icsk_inet;
-	struct request_sock_queue icsk_accept_queue;
+	struct request_sock_queue icsk_accept_queue;  /* accept队列 */
 	struct inet_bind_bucket	  *icsk_bind_hash;    /* 对应的端口绑定结构 */
 	unsigned long		  icsk_timeout;
  	struct timer_list	  icsk_retransmit_timer;
@@ -119,7 +119,7 @@ struct inet_connection_sock {
 		__u32		  lrcvtime;	 /* timestamp of last received data packet */
 		__u16		  last_seg_size; /* Size of last incoming segment	   */
 		__u16		  rcv_mss;	 /* MSS used for delayed ACK decisions	   */ 
-	} icsk_ack;
+	} icsk_ack;             /* 延迟响应(delay ack)数据结构 */
 	struct {
 		int		  enabled;
 

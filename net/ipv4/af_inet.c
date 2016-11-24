@@ -190,7 +190,7 @@ static int inet_autobind(struct sock *sk)
 
 /*
  *	Move a socket into listening state.
- */
+ *//* SOCK_STREAM原语的监听动作；移动一个socket到listen状态 */
 int inet_listen(struct socket *sock, int backlog)
 {
 	struct sock *sk = sock->sk;
@@ -209,14 +209,14 @@ int inet_listen(struct socket *sock, int backlog)
 
 	/* Really, if the socket is already in listen state
 	 * we can only allow the backlog to be adjusted.
-	 */
+	 *//* 如果已经处于监听状态，则只调整backlog(不报错!!!) */
 	if (old_state != TCP_LISTEN) {
 		/* Enable TFO w/o requiring TCP_FASTOPEN socket option.
 		 * Note that only TCP sockets (SOCK_STREAM) will reach here.
 		 * Also fastopen backlog may already been set via the option
 		 * because the socket was in TCP_LISTEN state previously but
 		 * was shutdown() rather than close().
-		 */
+		 *//* TFO(TCP fast open)快速打开相关初始化 */
 		if ((sysctl_tcp_fastopen & TFO_SERVER_WO_SOCKOPT1) &&
 		    (sysctl_tcp_fastopen & TFO_SERVER_ENABLE) &&
 		    !inet_csk(sk)->icsk_accept_queue.fastopenq.max_qlen) {
@@ -228,6 +228,8 @@ int inet_listen(struct socket *sock, int backlog)
 		if (err)
 			goto out;
 	}
+    
+    /* 设置半连接上限 */
 	sk->sk_max_ack_backlog = backlog;
 	err = 0;
 

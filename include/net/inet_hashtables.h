@@ -115,7 +115,7 @@ struct inet_hashinfo {
 	 *
 	 *          TCP_ESTABLISHED <= sk->sk_state < TCP_CLOSE
 	 *
-	 *//* 非TCP_LISTEN状态的队列，五元组??? */
+	 *//* 非TCP_LISTEN状态的队列，五元组(IP+PORT+NET NAMESPACE) */
 	struct inet_ehash_bucket	*ehash;
 	spinlock_t			*ehash_locks;
 	unsigned int			ehash_mask;
@@ -140,7 +140,7 @@ struct inet_hashinfo {
 	/* All sockets in TCP_LISTEN state will be in here.  This is the only
 	 * table where wildcard'd TCP sockets can exist.  Hash function here
 	 * is just local port number.
-	 *//* 处于TCP_LISTEN状态的队列，监听IP+port??? 允许糢糊匹配的项 */
+	 *//* 处于TCP_LISTEN状态的队列，监听PORT+NET NAMESPACE，允许糢糊匹配的项 */
 	struct inet_listen_hashbucket	listening_hash[INET_LHTABLE_SIZE]
 					____cacheline_aligned_in_smp;
 };

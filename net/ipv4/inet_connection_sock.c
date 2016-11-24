@@ -752,34 +752,39 @@ void inet_csk_prepare_forced_close(struct sock *sk)
 }
 EXPORT_SYMBOL(inet_csk_prepare_forced_close);
 
+/* tcp的listen()执行实体 */
 int inet_csk_listen_start(struct sock *sk, int backlog)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct inet_sock *inet = inet_sk(sk);
 	int err = -EADDRINUSE;
 
+    /* 初始化accept队列 */
 	reqsk_queue_alloc(&icsk->icsk_accept_queue);
 
+    /* 初始化backlog连接 */
 	sk->sk_max_ack_backlog = backlog;
 	sk->sk_ack_backlog = 0;
+
+    /* delay ack数据结构初始化 */
 	inet_csk_delack_init(sk);
 
 	/* There is race window here: we announce ourselves listening,
 	 * but this transition is still not validated by get_port().
 	 * It is OK, because this socket enters to hash table only
 	 * after validation is complete.
-	 */
+	 *//* 设置监听状态，并加入监听队列 */
 	sk_state_store(sk, TCP_LISTEN);
-	if (!sk->sk_prot->get_port(sk, inet->inet_num)) {
-		inet->inet_sport = htons(inet->inet_num);
+	if (!sk->sk_prot->get_port(sk, inet->inet_num)) { /* tcp_prot->get_port() = inet_csk_get_port() */
+		inet->inet_sport = htons(inet->inet_num);     /* 获取绑定的端括号 */
 
 		sk_dst_reset(sk);
-		err = sk->sk_prot->hash(sk);
-
-		if (likely(!err))
+		err = sk->sk_prot->hash(sk);    /* tcp_prot->hash() = inet_hash() */
+		if (likely(!err))               /* 加入hash队列 */
 			return 0;
 	}
 
+    /* 设置失败，状态回滚 */
 	sk->sk_state = TCP_CLOSE;
 	return err;
 }

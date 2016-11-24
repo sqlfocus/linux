@@ -184,7 +184,7 @@ struct inet_sock {
 #define inet_daddr		sk.__sk_common.skc_daddr
 #define inet_rcv_saddr		sk.__sk_common.skc_rcv_saddr  /* 绑定的本端IP地址 */
 #define inet_dport		sk.__sk_common.skc_dport
-#define inet_num		sk.__sk_common.skc_num  /* SOCK_RAW，原始协议的协议号 */
+#define inet_num		sk.__sk_common.skc_num  /* 绑定的本地端口号；SOCK_RAW，原始协议的协议号 */
 
 	__be32			inet_saddr;                 /* 发送报文时，本端IP地址；非特殊情况=inet_rcv_saddr */
 	__s16			uc_ttl;
