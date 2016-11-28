@@ -673,7 +673,7 @@ EXPORT_SYMBOL_GPL(inet_hash_connect);
 void inet_hashinfo_init(struct inet_hashinfo *h)
 {
 	int i;
-
+    /* 初始化监听hash队列 */
 	for (i = 0; i < INET_LHTABLE_SIZE; i++) {
 		spin_lock_init(&h->listening_hash[i].lock);
 		INIT_HLIST_HEAD(&h->listening_hash[i].head);

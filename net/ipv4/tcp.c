@@ -286,7 +286,7 @@ int sysctl_tcp_min_tso_segs __read_mostly = 2;
 
 int sysctl_tcp_autocorking __read_mostly = 1;
 
-struct percpu_counter tcp_orphan_count;
+struct percpu_counter tcp_orphan_count;          /* 孤儿TCP插口计数 */
 EXPORT_SYMBOL_GPL(tcp_orphan_count);
 
 long sysctl_tcp_mem[3] __read_mostly;
@@ -302,7 +302,7 @@ EXPORT_SYMBOL(tcp_memory_allocated);
 
 /*
  * Current number of TCP sockets.
- */
+ *//* 跟踪TCP特定插口结构分配情况 */
 struct percpu_counter tcp_sockets_allocated;
 EXPORT_SYMBOL(tcp_sockets_allocated);
 
@@ -3273,6 +3273,7 @@ static void __init tcp_init_mem(void)
 	sysctl_tcp_mem[2] = sysctl_tcp_mem[0] * 2;	/* 9.37 % */
 }
 
+/* 构建TCP的缓存，初始化相关的全局限制，如使用内存、收发缓存等 */
 void __init tcp_init(void)
 {
 	int max_rshare, max_wshare, cnt;
@@ -3281,7 +3282,7 @@ void __init tcp_init(void)
 
 	BUILD_BUG_ON(sizeof(struct tcp_skb_cb) >
 		     FIELD_SIZEOF(struct sk_buff, cb));
-
+    /* 初始化TCP插口全局变量，分配bind队列项的缓存 */
 	percpu_counter_init(&tcp_sockets_allocated, 0, GFP_KERNEL);
 	percpu_counter_init(&tcp_orphan_count, 0, GFP_KERNEL);
 	tcp_hashinfo.bind_bucket_cachep =
@@ -3293,7 +3294,7 @@ void __init tcp_init(void)
 	 * hash tables.
 	 *
 	 * The methodology is similar to that of the buffer cache.
-	 */
+	 *//* 根据系统内存，分配已建立对象的缓存(类似于流表五元组) */
 	tcp_hashinfo.ehash =
 		alloc_large_system_hash("TCP established",
 					sizeof(struct inet_ehash_bucket),
@@ -3307,6 +3308,7 @@ void __init tcp_init(void)
 	for (i = 0; i <= tcp_hashinfo.ehash_mask; i++)
 		INIT_HLIST_NULLS_HEAD(&tcp_hashinfo.ehash[i].chain, i);
 
+    /* 分配绑定hash队列 */
 	if (inet_ehash_locks_alloc(&tcp_hashinfo))
 		panic("TCP: failed to alloc ehash_locks");
 	tcp_hashinfo.bhash =
@@ -3328,10 +3330,12 @@ void __init tcp_init(void)
 
 	cnt = tcp_hashinfo.ehash_mask + 1;
 
+    /* 根据五元组队列大小，初始化全局变量 */
 	tcp_death_row.sysctl_max_tw_buckets = cnt / 2;
 	sysctl_tcp_max_orphans = cnt / 2;
 	sysctl_max_syn_backlog = max(128, cnt / 256);
 
+    /* 初始化TCP内存限制 */
 	tcp_init_mem();
 	/* Set per-socket limits to no more than 1/128 the pressure threshold */
 	limit = nr_free_buffer_pages() << (PAGE_SHIFT - 7);
@@ -3349,6 +3353,7 @@ void __init tcp_init(void)
 	pr_info("Hash tables configured (established %u bind %u)\n",
 		tcp_hashinfo.ehash_mask + 1, tcp_hashinfo.bhash_size);
 
+    /* */
 	tcp_metrics_init();
 	BUG_ON(tcp_register_congestion_control(&tcp_reno) != 0);
 	tcp_tasklet_init();

@@ -6929,7 +6929,8 @@ void *__init alloc_large_system_hash(const char *tablename,
 	unsigned long log2qty, size;
 	void *table = NULL;
 
-	/* allow the kernel cmdline to have a say */
+	/* 允许通过内核启动参数设置TCP五元组hash表项大小，
+       allow the kernel cmdline to have a say */
 	if (!numentries) {
 		/* round applicable memory size up to nearest megabyte */
 		numentries = nr_kernel_pages;
@@ -6972,7 +6973,7 @@ void *__init alloc_large_system_hash(const char *tablename,
 
 	log2qty = ilog2(numentries);
 
-	do {
+	do {                              /* 分配内存 */
 		size = bucketsize << log2qty;
 		if (flags & HASH_EARLY)
 			table = memblock_virt_alloc_nopanic(size, 0);
@@ -6997,7 +6998,7 @@ void *__init alloc_large_system_hash(const char *tablename,
 	pr_info("%s hash table entries: %ld (order: %d, %lu bytes)\n",
 		tablename, 1UL << log2qty, ilog2(size) - PAGE_SHIFT, size);
 
-	if (_hash_shift)
+	if (_hash_shift)                  /* 设定表项属性 */
 		*_hash_shift = log2qty;
 	if (_hash_mask)
 		*_hash_mask = (1 << log2qty) - 1;

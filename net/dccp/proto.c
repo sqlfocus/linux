@@ -1092,8 +1092,8 @@ static inline void dccp_mib_exit(void)
 	free_percpu(dccp_statistics);
 }
 
-static int thash_entries;
-module_param(thash_entries, int, 0444);
+static int thash_entries;                  /* TCP五元组hash表的表项数；可通过 */
+module_param(thash_entries, int, 0444);    /* 内核启动参数设置 */
 MODULE_PARM_DESC(thash_entries, "Number of ehash buckets");
 
 #ifdef CONFIG_IP_DCCP_DEBUG

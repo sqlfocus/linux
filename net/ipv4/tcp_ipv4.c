@@ -92,7 +92,7 @@ static int tcp_v4_md5_hash_hdr(char *md5_hash, const struct tcp_md5sig_key *key,
 			       __be32 daddr, __be32 saddr, const struct tcphdr *th);
 #endif
 
-struct inet_hashinfo tcp_hashinfo;
+struct inet_hashinfo tcp_hashinfo;        /* TCP协议的hash队列，包括BIND、监听等 */
 EXPORT_SYMBOL(tcp_hashinfo);
 
 static  __u32 tcp_v4_init_sequence(const struct sk_buff *skb)
@@ -2447,7 +2447,7 @@ static void __net_exit tcp_sk_exit_batch(struct list_head *net_exit_list)
 {
 	inet_twsk_purge(&tcp_hashinfo, &tcp_death_row, AF_INET);
 }
-
+/* 网络命名空间的操控集合 */
 static struct pernet_operations __net_initdata tcp_sk_ops = {
        .init	   = tcp_sk_init,
        .exit	   = tcp_sk_exit,
@@ -2456,7 +2456,7 @@ static struct pernet_operations __net_initdata tcp_sk_ops = {
 
 void __init tcp_v4_init(void)
 {
-	inet_hashinfo_init(&tcp_hashinfo);
-	if (register_pernet_subsys(&tcp_sk_ops))
+	inet_hashinfo_init(&tcp_hashinfo);          /* 初始化监听hash队列 */
+	if (register_pernet_subsys(&tcp_sk_ops))    /* 注册TCP网络命名空间的操控集合 */
 		panic("Failed to create the TCP control socket.\n");
 }

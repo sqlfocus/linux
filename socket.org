@@ -19,8 +19,10 @@
     -inet_register_protosw()
       -list_add_rcu()                   利用inetsw_array[]初始化inetsw[]
     -ip_init()
-    -tcp_v4_init()
-    -tcp_init()
+    -tcp_v4_init()                      ~/net/ipv4/tcp_ipv4.c
+      -inet_hashinfo_init()             初始化tcp_hashinfo的监听队列
+      -register_pernet_subsys()         注册网络命名空间的操控集tcp_sk_ops
+    -tcp_init()                         建立TCP请求的缓存，初始化各种内存限制，~/net/ipv4/tcp.c
   #+END_EXAMPLE
 
 * 全局变量
@@ -95,8 +97,14 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
-* TODO tcp_init()
-ab
+** ~tcp_hashinfo~
+此结构定义了TCP在IPv4中的各种hash队列表，包括bind端口队列、已建立链接的
+五元组hash表等。
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/tcp_ipv4.c
+
+  struct inet_hashinfo tcp_hashinfo;
+  #+END_EXAMPLE
 
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立
