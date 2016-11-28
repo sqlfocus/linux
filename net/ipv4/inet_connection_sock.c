@@ -315,7 +315,7 @@ static int inet_csk_wait_for_connect(struct sock *sk, long timeo)
 
 /*
  * This will accept the next outstanding connection.
- */
+ *//* accept()系统调用对应的协议层(tcp_prot->accept)操作函数 */
 struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
@@ -333,7 +333,7 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 	if (sk->sk_state != TCP_LISTEN)
 		goto out_err;
 
-	/* Find already established connection */
+	/* ACCEPT队列空，等待；Find already established connection */
 	if (reqsk_queue_empty(queue)) {
 		long timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
 
@@ -343,9 +343,10 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 			goto out_err;
 
 		error = inet_csk_wait_for_connect(sk, timeo);
-		if (error)
+		if (error)                      /* 睡眠等待 */
 			goto out_err;
 	}
+    /* 从ACCEPT队列获取已完成三次握手的插口 */
 	req = reqsk_queue_remove(queue, sk);
 	newsk = req->sk;
 

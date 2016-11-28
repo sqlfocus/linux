@@ -119,7 +119,7 @@ struct tcp_request_sock {
 	struct inet_request_sock 	req;
 	const struct tcp_request_sock_ops *af_specific;
 	struct skb_mstamp		snt_synack; /* first SYNACK sent time */
-	bool				tfo_listener;
+	bool				tfo_listener;   /* */
 	u32				txhash;
 	u32				rcv_isn;
 	u32				snt_isn;

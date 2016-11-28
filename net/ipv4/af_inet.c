@@ -672,15 +672,14 @@ EXPORT_SYMBOL(inet_stream_connect);
 /*
  *	Accept a pending connection. The TCP layer now gives BSD semantics.
  */
-
+/* accept()系统调用，对应的BSD插口层操作函数 */
 int inet_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	struct sock *sk1 = sock->sk;
 	int err = -EINVAL;
 	struct sock *sk2 = sk1->sk_prot->accept(sk1, flags, &err);
-
-	if (!sk2)
-		goto do_err;
+	if (!sk2)                      /* tcp_prot->accept = inet_csk_accept() */
+		goto do_err;               /* 特定于协议层的处理函数，创建协议结构 */
 
 	lock_sock(sk2);
 
@@ -689,9 +688,9 @@ int inet_accept(struct socket *sock, struct socket *newsock, int flags)
 		  (TCPF_ESTABLISHED | TCPF_SYN_RECV |
 		  TCPF_CLOSE_WAIT | TCPF_CLOSE)));
 
-	sock_graft(sk2, newsock);
+	sock_graft(sk2, newsock);      /* 建立BSD插口和协议插口的关联 */
 
-	newsock->state = SS_CONNECTED;
+	newsock->state = SS_CONNECTED; /* 设置BSD插口状态 */
 	err = 0;
 	release_sock(sk2);
 do_err:

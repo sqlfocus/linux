@@ -1419,7 +1419,8 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
  *	status to recvmsg. We need to add that support in a way thats
  *	clean when we restucture accept also.
  */
-
+/* accept4()系统调用，最后一个参数可设置SOCK_NONBLOCK、SOCK_CLOEXEC，节
+   省调用设置这两个参数的代码 */
 SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		int __user *, upeer_addrlen, int, flags)
 {
@@ -1430,7 +1431,6 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 
 	if (flags & ~(SOCK_CLOEXEC | SOCK_NONBLOCK))
 		return -EINVAL;
-
 	if (SOCK_NONBLOCK != O_NONBLOCK && (flags & SOCK_NONBLOCK))
 		flags = (flags & ~SOCK_NONBLOCK) | O_NONBLOCK;
 
@@ -1439,12 +1439,11 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		goto out;
 
 	err = -ENFILE;
-	newsock = sock_alloc();
+	newsock = sock_alloc();           /* 分配新插口，记录新到来的客户端信息 */
 	if (!newsock)
 		goto out_put;
-
 	newsock->type = sock->type;
-	newsock->ops = sock->ops;
+	newsock->ops = sock->ops;         /* 继承父插口BSD层的操作 */
 
 	/*
 	 * We don't need try_module_get here, as the listening socket (sock)
@@ -1453,7 +1452,7 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 	__module_get(newsock->ops->owner);
 
 	newfd = get_unused_fd_flags(flags);
-	if (unlikely(newfd < 0)) {
+	if (unlikely(newfd < 0)) {        /* 获取新的文件句柄及描述符 */
 		err = newfd;
 		sock_release(newsock);
 		goto out_put;
@@ -1471,8 +1470,8 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		goto out_fd;
 
 	err = sock->ops->accept(sock, newsock, sock->file->f_flags);
-	if (err < 0)
-		goto out_fd;
+	if (err < 0)                      /* BSD插口层接口 */
+		goto out_fd;                  /* inet_stream_ops->accept = inet_accept() */
 
 	if (upeer_sockaddr) {
 		if (newsock->ops->getname(newsock, (struct sockaddr *)&address,
@@ -1482,13 +1481,12 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		}
 		err = move_addr_to_user(&address,
 					len, upeer_sockaddr, upeer_addrlen);
-		if (err < 0)
+		if (err < 0)                  /* copy客户端地址到传入传出参数 */
 			goto out_fd;
 	}
 
 	/* File flags are not inherited via accept() unlike another OSes. */
-
-	fd_install(newfd, newfile);
+	fd_install(newfd, newfile);       /* 建立fd和文件结构的对应关系 */
 	err = newfd;
 
 out_put:
@@ -1501,6 +1499,7 @@ out_fd:
 	goto out_put;
 }
 
+/* accept()系统调用 */
 SYSCALL_DEFINE3(accept, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		int __user *, upeer_addrlen)
 {

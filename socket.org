@@ -174,8 +174,25 @@ protocol字段指定插口使用的协议，一般情况下在某个通信域内
         -sock_prot_inuse_add()
   #+END_EXAMPLE
 
-* TODO accept()
-ab
+* DONE accept()
+  CLOSED: [2016-11-28 Mon 10:54]
+本出只摘录了accept()系统调用的表面处理流程，即从ACCEPT队列获取已完成
+三次握手的协议插口；而ACCEPT队列形成所对应的底层三次握手流程未涉猎。
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE3(accept,,,,,,)                 accept()入口，~/net/socket.c
+    -sys_accept4()
+      -sock_alloc()                              分配BSD层插口
+      -get_unused_fd_flags()                     分配未使用的fd描述符
+      -sock_alloc_file()                         分配对应的文件
+      -struct socket->ops->accept()              BSD插口层操控函数
+      -->inet_stream_ops->accept()
+      -->inet_accept()
+        -struct sock->sk_prot->accept()          特定于协议的操控函数
+        -->tcp_prot->accept()
+        -->inet_csk_accept()
+          -reqsk_queue_remove()                  从ACCEPT队列获取完成三次握手的插口
+      -fd_install()                              建立fd和file的对应关系
+  #+END_EXAMPLE
 
 * DONE connect()
   CLOSED: [2016-11-28 Mon 10:07]
@@ -195,6 +212,9 @@ ab
         -inet_wait_for_connect()                等待建立链接
         -设置struct socket->state = SS_CONNECTED
   #+END_EXAMPLE
+
+* TODO 三次握手
+ab
 
 * TODO 快速打开fastopen
 ab
