@@ -135,7 +135,7 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
 }
 EXPORT_SYMBOL_GPL(tcp_twsk_unique);
 
-/* This will initiate an outgoing connection. */
+/* 此函数用于TCP发起三次握手，This will initiate an outgoing connection. */
 int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 {
 	struct sockaddr_in *usin = (struct sockaddr_in *)uaddr;
@@ -150,22 +150,21 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 
 	if (addr_len < sizeof(struct sockaddr_in))
 		return -EINVAL;
-
 	if (usin->sin_family != AF_INET)
 		return -EAFNOSUPPORT;
 
-	nexthop = daddr = usin->sin_addr.s_addr;
+	nexthop = daddr = usin->sin_addr.s_addr; /* 默认利用目的地址当作下一跳 */
 	inet_opt = rcu_dereference_protected(inet->inet_opt,
 					     lockdep_sock_is_held(sk));
-	if (inet_opt && inet_opt->opt.srr) {
-		if (!daddr)
+	if (inet_opt && inet_opt->opt.srr) {     /* 指定了IP路由选项的，下一跳 */
+		if (!daddr)                          /* 由它决定 */
 			return -EINVAL;
 		nexthop = inet_opt->opt.faddr;
 	}
 
 	orig_sport = inet->inet_sport;
 	orig_dport = usin->sin_port;
-	fl4 = &inet->cork.fl.u.ip4;
+	fl4 = &inet->cork.fl.u.ip4;              /* 查路由 */ 
 	rt = ip_route_connect(fl4, nexthop, inet->inet_saddr,
 			      RT_CONN_FLAGS(sk), sk->sk_bound_dev_if,
 			      IPPROTO_TCP,
@@ -183,11 +182,11 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	}
 
 	if (!inet_opt || !inet_opt->opt.srr)
-		daddr = fl4->daddr;
+		daddr = fl4->daddr;                  /* 目的IP */
 
 	if (!inet->inet_saddr)
-		inet->inet_saddr = fl4->saddr;
-	sk_rcv_saddr_set(sk, inet->inet_saddr);
+		inet->inet_saddr = fl4->saddr;       /* 路由决定源IP */
+	sk_rcv_saddr_set(sk, inet->inet_saddr);  /* 记录插口的本端源IP地址 */
 
 	if (tp->rx_opt.ts_recent_stamp && inet->inet_daddr != daddr) {
 		/* Reset inherited state */
@@ -197,12 +196,12 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 			tp->write_seq	   = 0;
 	}
 
-	if (tcp_death_row.sysctl_tw_recycle &&
+	if (tcp_death_row.sysctl_tw_recycle &&   /* timewait状态插口回收利用??? */
 	    !tp->rx_opt.ts_recent_stamp && fl4->daddr == daddr)
 		tcp_fetch_timewait_stamp(sk, &rt->dst);
 
-	inet->inet_dport = usin->sin_port;
-	sk_daddr_set(sk, daddr);
+	inet->inet_dport = usin->sin_port;       /* 设置插口对端的PORT */
+	sk_daddr_set(sk, daddr);                 /* 设置插口对端IP地址 */
 
 	inet_csk(sk)->icsk_ext_hdr_len = 0;
 	if (inet_opt)
@@ -215,16 +214,16 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	 * lock select source port, enter ourselves into the hash tables and
 	 * complete initialization after this.
 	 */
-	tcp_set_state(sk, TCP_SYN_SENT);
+	tcp_set_state(sk, TCP_SYN_SENT);         /* 启动TCP状态机 */
 	err = inet_hash_connect(&tcp_death_row, sk);
-	if (err)
+	if (err)                                 /* 加入已建立的hash队列 */
 		goto failure;
 
 	sk_set_txhash(sk);
 
 	rt = ip_route_newports(fl4, rt, orig_sport, orig_dport,
 			       inet->inet_sport, inet->inet_dport, sk);
-	if (IS_ERR(rt)) {
+	if (IS_ERR(rt)) {                        /* 利用新端口重新查找路由 */
 		err = PTR_ERR(rt);
 		rt = NULL;
 		goto failure;
@@ -233,7 +232,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	sk->sk_gso_type = SKB_GSO_TCPV4;
 	sk_setup_caps(sk, &rt->dst);
 
-	if (!tp->write_seq && likely(!tp->repair))
+	if (!tp->write_seq && likely(!tp->repair))/* 初始化发送序列号 */
 		tp->write_seq = secure_tcp_sequence_number(inet->inet_saddr,
 							   inet->inet_daddr,
 							   inet->inet_sport,
@@ -241,7 +240,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 
 	inet->inet_id = tp->write_seq ^ jiffies;
 
-	err = tcp_connect(sk);
+	err = tcp_connect(sk);                   /* 构建并发送SYN */
 
 	rt = NULL;
 	if (err)

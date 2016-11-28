@@ -29,6 +29,7 @@
 
 int sysctl_tcp_abort_on_overflow __read_mostly;
 
+/* TIMEWAIT插口队列 */
 struct inet_timewait_death_row tcp_death_row = {
 	.sysctl_max_tw_buckets = NR_FILE * 2,
 	.hashinfo	= &tcp_hashinfo,

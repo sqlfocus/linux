@@ -575,9 +575,9 @@ int __inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 	int err;
 	long timeo;
 
+    /* 参数检测 */
 	if (addr_len < sizeof(uaddr->sa_family))
 		return -EINVAL;
-
 	if (uaddr->sa_family == AF_UNSPEC) {
 		err = sk->sk_prot->disconnect(sk, flags);
 		sock->state = err ? SS_DISCONNECTING : SS_UNCONNECTED;
@@ -595,33 +595,33 @@ int __inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 		err = -EALREADY;
 		/* Fall out of switch with err, set for this state */
 		break;
-	case SS_UNCONNECTED:
+	case SS_UNCONNECTED:     /* 第一次的入口状态 */
 		err = -EISCONN;
 		if (sk->sk_state != TCP_CLOSE)
 			goto out;
 
 		err = sk->sk_prot->connect(sk, uaddr, addr_len);
-		if (err < 0)
-			goto out;
+		if (err < 0)         /* <BANG!!!>发起链接请求，开始三次握手 */
+			goto out;        /* tcp_prot->connect() = tcp_v4_connect() */
 
 		sock->state = SS_CONNECTING;
 
 		/* Just entered SS_CONNECTING state; the only
 		 * difference is that return value in non-blocking
 		 * case is EINPROGRESS, rather than EALREADY.
-		 */
-		err = -EINPROGRESS;
+		 *//* 链接时，再非阻塞状态，返回值为EINPROGRESS； */
+		err = -EINPROGRESS;  /* 阻塞状态返回值为EALREADY */
 		break;
 	}
 
 	timeo = sock_sndtimeo(sk, flags & O_NONBLOCK);
-
+                             /* 计算超时 */
 	if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV)) {
 		int writebias = (sk->sk_protocol == IPPROTO_TCP) &&
 				tcp_sk(sk)->fastopen_req &&
 				tcp_sk(sk)->fastopen_req->data ? 1 : 0;
 
-		/* Error code is set above */
+		/* 等待三次握手完成，错误信息由前置代码设置 */
 		if (!timeo || !inet_wait_for_connect(sk, timeo, writebias))
 			goto out;
 
@@ -640,13 +640,14 @@ int __inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 	 * and error was received after socket entered established state.
 	 * Hence, it is handled normally after connect() return successfully.
 	 */
-
+    /* 链接已经建立起来，设置状态 */
 	sock->state = SS_CONNECTED;
 	err = 0;
 out:
 	return err;
 
 sock_error:
+    /* 链接失败，状态回滚 */
 	err = sock_error(sk) ? : -ECONNABORTED;
 	sock->state = SS_UNCONNECTED;
 	if (sk->sk_prot->disconnect(sk, flags))
@@ -655,6 +656,7 @@ sock_error:
 }
 EXPORT_SYMBOL(__inet_stream_connect);
 
+/* connect()调用的实际处理入口 */
 int inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 			int addr_len, int flags)
 {

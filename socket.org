@@ -85,6 +85,19 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
+** ~tcp_death_row~
+此结构定义了TIMEWAIT插口队列及其参数。
+  #+BEGIN_EXAMPLE
+  ~/net/ipv4/tcp_minisocks.c
+
+  struct inet_timewait_death_row tcp_death_row = {
+      ...
+  };
+  #+END_EXAMPLE
+
+* TODO tcp_init()
+ab
+
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立
 通信系统的一端，并返回对应的描述符。
@@ -164,8 +177,24 @@ protocol字段指定插口使用的协议，一般情况下在某个通信域内
 * TODO accept()
 ab
 
-* TODO connect()
-ab
+* DONE connect()
+  CLOSED: [2016-11-28 Mon 10:07]
+此处仅仅是脉络式摘录，代码中关于路由、报文构造等也未注解，仅关注TCP、插
+口状态机变更；待后续遇到问题，以问题驱动进一步注解。
+
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE3(connect,,,,,,)               connect()入口，~/net/socket.c
+    -struct socket->ops->connect()
+    -->inet_stream_ops->connect()
+    -->inet_stream_connect()
+      -__inet_stream_connect()                  干实事儿的入口，~/net/ipv4/af_inet.c
+        -struct sock->sk_prot->connect
+        -->tcp_prot->connect()
+        -->tcp_v4_connect()                     发起链接请求，~/net/ipv4/tcp_ipv4.c
+          -tcp_connect()                        构建并发送SYN报文
+        -inet_wait_for_connect()                等待建立链接
+        -设置struct socket->state = SS_CONNECTED
+  #+END_EXAMPLE
 
 * TODO 快速打开fastopen
 ab

@@ -323,15 +323,15 @@ struct sock {
 #define sk_num			__sk_common.skc_num
 #define sk_dport		__sk_common.skc_dport
 #define sk_addrpair		__sk_common.skc_addrpair
-#define sk_daddr		__sk_common.skc_daddr
-#define sk_rcv_saddr		__sk_common.skc_rcv_saddr
+#define sk_daddr		__sk_common.skc_daddr                  /* 插口目的IP地址 */
+#define sk_rcv_saddr		__sk_common.skc_rcv_saddr          /* 插口源IP地址，本端的IP地址 */
 #define sk_family		__sk_common.skc_family                 /* AF_INET等 */
 #define sk_state		__sk_common.skc_state                  /* TCP_CLOSE等 */
 #define sk_reuse		__sk_common.skc_reuse                  /* 端口是否可重用 */
 #define sk_reuseport		__sk_common.skc_reuseport          /* SO_REUSEPORT属性 */
 #define sk_ipv6only		__sk_common.skc_ipv6only
 #define sk_net_refcnt		__sk_common.skc_net_refcnt
-#define sk_bound_dev_if		__sk_common.skc_bound_dev_if
+#define sk_bound_dev_if		__sk_common.skc_bound_dev_if       /* 绑定的接口 */
 #define sk_bind_node		__sk_common.skc_bind_node          /* hash节点，连接入绑定的hash链表 */
 #define sk_prot			__sk_common.skc_prot                   /* tcp_prot */
 #define sk_net			__sk_common.skc_net
@@ -422,7 +422,7 @@ struct sock {
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
 	long			sk_rcvtimeo;
-	long			sk_sndtimeo;
+	long			sk_sndtimeo;               /* 发送报文的超时时限 */
 	struct timer_list	sk_timer;
 	ktime_t			sk_stamp;
 	u16			sk_tsflags;

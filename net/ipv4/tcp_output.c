@@ -3330,7 +3330,7 @@ done:
 	return err;
 }
 
-/* Build a SYN and send it off. */
+/* 构建并发送SYN，Build a SYN and send it off. */
 int tcp_connect(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -3345,7 +3345,7 @@ int tcp_connect(struct sock *sk)
 	}
 
 	buff = sk_stream_alloc_skb(sk, 0, sk->sk_allocation, true);
-	if (unlikely(!buff))
+	if (unlikely(!buff))                 /* 分配发送缓存 */
 		return -ENOBUFS;
 
 	tcp_init_nondata_skb(buff, tp->write_seq++, TCPHDR_SYN);
@@ -3356,19 +3356,21 @@ int tcp_connect(struct sock *sk)
 	/* Send off SYN; include data in Fast Open. */
 	err = tp->fastopen_req ? tcp_send_syn_data(sk, buff) :
 	      tcp_transmit_skb(sk, buff, 1, sk->sk_allocation);
-	if (err == -ECONNREFUSED)
+	if (err == -ECONNREFUSED)            /* 发送报文 */
 		return err;
 
 	/* We change tp->snd_nxt after the tcp_transmit_skb() call
 	 * in order to make this packet get counted in tcpOutSegs.
 	 */
-	tp->snd_nxt = tp->write_seq;
+	tp->snd_nxt = tp->write_seq;         /* 更新TCP序号 */
 	tp->pushed_seq = tp->write_seq;
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_ACTIVEOPENS);
+                                         /* 更新MIB统计信息，活动链接数 */
 
 	/* Timer for repeating the SYN until an answer. */
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 				  inet_csk(sk)->icsk_rto, TCP_RTO_MAX);
+                                         /* 启动重传时钟 */
 	return 0;
 }
 EXPORT_SYMBOL(tcp_connect);

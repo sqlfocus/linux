@@ -339,9 +339,11 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,
 	spin_lock(lock);
 
 	sk_nulls_for_each(sk2, node, &head->chain) {
+        /* 匹配hash值 */
 		if (sk2->sk_hash != hash)
 			continue;
 
+        /* 五元组内容匹配 */
 		if (likely(INET_MATCH(sk2, net, acookie,
 					 saddr, daddr, ports, dif))) {
 			if (sk2->sk_state == TCP_TIME_WAIT) {
