@@ -1,0 +1,22 @@
+#+TITLE: 探索systemtap的内核实现原理
+#+AUTHOR: sqlfocus
+
+
+本文档主要摘录systemtap在内核中的实现，以期更深入理解动态调试技术；
+也可以为安全理念提供参考。
+
+* kprobe
+ab
+
+* uprobe
+ab
+
+* 参考
+ - ~/Documentation/kprobes.txt
+ - ~/Documentation/trace/kprobetrace.txt
+
+
+
+
+
+
