@@ -53,17 +53,18 @@ EFLAGS中的TF标志), 大概的流程：
     : INT 3中断到处理函数
     :
     : 流程
-    :   kprobe_int3_handler()           设置单步执行，设置ip为探测句柄地址；
-    :     struct kprobe->pre_handler()      待中断处理结束后，执行探测句柄
-    :     setup_singlestep()
-    :   notify_die()                    执行die_chain链，响应探测句柄的fault错误
-    :     kprobe_exceptions_notify()
+    :   kprobe_int3_handler()           执行探测点处理句柄；设置ip为原探测点地址；
+    :     struct kprobe->pre_handler()      并设置单步执行，一旦中断返回，则触发
+    :     setup_singlestep()                单步中断
+    :   notify_die()
  - do_debug()
     : ~/arch/x86/kernel/traps.c
     : 单步执行触发异常对应的处理函数
     :
     : 流程
     :   kprobe_debug_handler()
+    :     resume_execution()            设置EIP
+    :     struct kprobe->post_handler() 调用事后处理句柄
 
 * uprobe
 ab
