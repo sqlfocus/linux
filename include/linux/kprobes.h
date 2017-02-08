@@ -70,50 +70,52 @@ typedef int (*kprobe_fault_handler_t) (struct kprobe *, struct pt_regs *,
 typedef int (*kretprobe_handler_t) (struct kretprobe_instance *,
 				    struct pt_regs *);
 
+/* 支持kprobe追踪功能的结构体 */
 struct kprobe {
+    /* 全局hash表，以被探测的addr为键 */
 	struct hlist_node hlist;
 
-	/* list of kprobes for multi-handler support */
+	/* 支持同一探测点多个探测函数；list of kprobes for multi-handler support */
 	struct list_head list;
 
-	/*count the number of times this probe was temporarily disarmed */
+	/* count the number of times this probe was temporarily disarmed */
 	unsigned long nmissed;
 
-	/* location of the probe point */
+	/* 被探测的目标地址，location of the probe point */
 	kprobe_opcode_t *addr;
 
-	/* Allow user to indicate symbol name of the probe point */
+	/* 支持指定符号名而非地址，Allow user to indicate symbol name of the probe point */
 	const char *symbol_name;
 
-	/* Offset into the symbol */
+	/* 支持探测相对符号名的偏移地址的指令，如函数内部某语句，Offset into the symbol */
 	unsigned int offset;
 
-	/* Called before addr is executed. */
+	/* 目标探测点执行之前调用，Called before addr is executed. */
 	kprobe_pre_handler_t pre_handler;
 
-	/* Called after addr is executed, unless... */
+	/* 目标探测点执行之后调用，Called after addr is executed, unless... */
 	kprobe_post_handler_t post_handler;
 
-	/*
+	/* 探测函数执行时，如果引发fault，则调用此句柄处理
 	 * ... called if executing addr causes a fault (eg. page fault).
 	 * Return 1 if it handled fault, otherwise kernel will see it.
 	 */
 	kprobe_fault_handler_t fault_handler;
 
-	/*
+	/* 探测函数执行时，触发了断点陷阱，则调用此句柄
 	 * ... called if breakpoint trap occurs in probe handler.
 	 * Return 1 if it handled break, otherwise kernel will see it.
 	 */
 	kprobe_break_handler_t break_handler;
 
-	/* Saved opcode (which has been replaced with breakpoint) */
+	/* 保存被替换的指令码，Saved opcode (which has been replaced with breakpoint) */
 	kprobe_opcode_t opcode;
 
-	/* copy of the original instruction */
+	/* 保存被替换的指令码，copy of the original instruction */
 	struct arch_specific_insn ainsn;
 
 	/*
-	 * Indicates various status flags.
+	 * 状态位，Indicates various status flags.
 	 * Protected by kprobe_mutex after this kprobe is registered.
 	 */
 	u32 flags;

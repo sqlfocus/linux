@@ -526,7 +526,7 @@ do_general_protection(struct pt_regs *regs, long error_code)
 }
 NOKPROBE_SYMBOL(do_general_protection);
 
-/* May run on IST stack. */
+/* int 3中断处理程序，May run on IST stack. */
 dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 {
 #ifdef CONFIG_DYNAMIC_FTRACE
@@ -550,6 +550,7 @@ dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 #endif /* CONFIG_KGDB_LOW_LEVEL_TRAP */
 
 #ifdef CONFIG_KPROBES
+    /* 设置单步执行，执行kprobe探测句柄 */
 	if (kprobe_int3_handler(regs))
 		goto exit;
 #endif
@@ -665,7 +666,7 @@ static bool is_sysenter_singlestep(struct pt_regs *regs)
  * by user code)
  *
  * May run on IST stack.
- */
+ *//* 处理单步调试触发的异常 */
 dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 {
 	struct task_struct *tsk = current;
@@ -727,6 +728,7 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 	tsk->thread.debugreg6 = dr6;
 
 #ifdef CONFIG_KPROBES
+    /* kprobe对应的处理句柄 */
 	if (kprobe_debug_handler(regs))
 		goto exit;
 #endif

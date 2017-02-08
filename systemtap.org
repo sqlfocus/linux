@@ -6,7 +6,64 @@
 也可以为安全理念提供参考。
 
 * kprobe
-ab
+Kprobe是内核提供的一种调试机制，它提供了一种方法，能够在不修改现有代码的
+基础上，灵活的跟踪内核函数的执行。
+
+基本工作原理：用户指定一个探测点，并把一个用户定义的处理函数关联到该探测
+点，当内核执行到该探测点时，相应的关联函数被执行，然后继续执行正常的代码
+路径。
+     
+kprobe提供了三种形式的探测点，1)一种是最基本的kprobe，能够在指定代码执行前、
+执行后进行探测，但此时不能访问被探测函数内的相关变量信息；2)一种是jprobe，
+用于探测某一函数的入口，并且能够访问对应的函数参数；3)一种是kretprobe，用于
+完成指定函数返回值的探测功能。其中最基本的是kprobe机制，jprobe以及kretprobe
+的实现都依赖于kprobe，但其代码的实现都很巧妙。
+
+** 执行流程
+实现kprobe主要利用了内核中的两个功能特性：异常(尤其是int 3)，单步执行(
+EFLAGS中的TF标志), 大概的流程：
+ - 注册探测点时，对被探测函数的指令码进行替换，替换为int 3
+ - 执行int 3异常，通过通知链的方式调用kprobe的异常处理函数
+ - 在kprobe异常处理函数中，判断是否存在pre_handler钩子，存在则执行
+ - 通过设置EFLAGS的TF位，进入单步调试，并且把异常返回的地址修改为保存的原指令码
+ - 代码返回，执行原有指令，执行结束后触发单步异常
+ - 在单步异常的处理中，清除单步标志，执行post_handler流程，并最终返回
+
+** 代码摘录
+ - init_kprobes()
+    : ~/kernel/kprobes.c
+    : kprobe模块儿初始化入口
+    :
+    : 流程
+    :   populate_kprobe_blacklist()     注册黑名单
+    :   register_die_notifier()         注册kprobe_exceptions_nb到die_chain链
+    :                                       以处理int 3异常
+    :   register_module_notifier()      注册kprobe_module_nb
+ - register_kprobe()
+    : ~/kernel/kprobes.c
+    : 注册kprobe探测点
+    :
+    : 流程
+    :   check_kprobe_address_safe()     检查地址
+    :   prepare_kprobe()                保存原有指令
+    :   hlist_add_head_rcu()            加入kprobe_table[]
+    :   arm_kprobe()                    使能探测点(替换为int 3)
+ - do_int3()
+    : ~/arch/x86/kernel/traps.c
+    : INT 3中断到处理函数
+    :
+    : 流程
+    :   kprobe_int3_handler()           设置单步执行，设置ip为探测句柄地址；
+    :     struct kprobe->pre_handler()      待中断处理结束后，执行探测句柄
+    :     setup_singlestep()
+    :   notify_die()                    执行die_chain链，响应探测句柄的fault错误
+    :     kprobe_exceptions_notify()
+ - do_debug()
+    : ~/arch/x86/kernel/traps.c
+    : 单步执行触发异常对应的处理函数
+    :
+    : 流程
+    :   kprobe_debug_handler()
 
 * uprobe
 ab
@@ -14,6 +71,7 @@ ab
 * 参考
  - ~/Documentation/kprobes.txt
  - ~/Documentation/trace/kprobetrace.txt
+ - ~/samples/kprobes/*.c
 
 
 

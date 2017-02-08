@@ -554,7 +554,9 @@ static void setup_singlestep(struct kprobe *p, struct pt_regs *regs,
 	clear_btf();
 	regs->flags |= X86_EFLAGS_TF;
 	regs->flags &= ~X86_EFLAGS_IF;
-	/* single step inline if the instruction is an int3 */
+	/* 设置异常返回的地址为被探测点的地址；异常返回时，将触发单步执行异常，
+       由do_debug()处理，以便于执行post_handler()函数，清除单步执行标识
+       single step inline if the instruction is an int3 */
 	if (p->opcode == BREAKPOINT_INSTRUCTION)
 		regs->ip = (unsigned long)p->addr;
 	else
@@ -601,7 +603,7 @@ NOKPROBE_SYMBOL(reenter_kprobe);
 /*
  * Interrupts are disabled on entry as trap3 is an interrupt gate and they
  * remain disabled throughout this function.
- */
+ *//* kprobe响应INT 3中断的处理函数 */
 int kprobe_int3_handler(struct pt_regs *regs)
 {
 	kprobe_opcode_t *addr;
@@ -624,10 +626,10 @@ int kprobe_int3_handler(struct pt_regs *regs)
 	p = get_kprobe(addr);
 
 	if (p) {
-		if (kprobe_running()) {
+		if (kprobe_running()) {    /* 异常由kprobes自身触发 */
 			if (reenter_kprobe(p, regs, kcb))
 				return 1;
-		} else {
+		} else {                   /* 设置单步调试模式 */
 			set_current_kprobe(p, regs, kcb);
 			kcb->kprobe_status = KPROBE_HIT_ACTIVE;
 
@@ -638,7 +640,7 @@ int kprobe_int3_handler(struct pt_regs *regs)
 			 * for calling the break_handler below on re-entry
 			 * for jprobe processing, so get out doing nothing
 			 * more here.
-			 */
+			 *//* 执行注册的探测句柄 */
 			if (!p->pre_handler || !p->pre_handler(p, regs))
 				setup_singlestep(p, regs, kcb, 0);
 			return 1;
@@ -907,7 +909,7 @@ NOKPROBE_SYMBOL(resume_execution);
 /*
  * Interrupts are disabled on entry as trap1 is an interrupt gate and they
  * remain disabled throughout this function.
- */
+ *//* kprobe对应单步异常的处理句柄 */
 int kprobe_debug_handler(struct pt_regs *regs)
 {
 	struct kprobe *cur = kprobe_running();
@@ -916,9 +918,11 @@ int kprobe_debug_handler(struct pt_regs *regs)
 	if (!cur)
 		return 0;
 
+    /* 设置异常返回的EIP为下一条需要执行的指令，并恢复EFLAGS */
 	resume_execution(cur, regs, kcb);
 	regs->flags |= kcb->kprobe_saved_flags;
 
+    /* 执行post_handler() */
 	if ((kcb->kprobe_status != KPROBE_REENTER) && cur->post_handler) {
 		kcb->kprobe_status = KPROBE_HIT_SSDONE;
 		cur->post_handler(cur, regs, 0);
@@ -1016,7 +1020,7 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 }
 NOKPROBE_SYMBOL(kprobe_fault_handler);
 
-/*
+/* kprobe响应探测句柄出现fault错误的处理函数
  * Wrapper routine for handling exceptions.
  */
 int kprobe_exceptions_notify(struct notifier_block *self, unsigned long val,
@@ -1025,7 +1029,7 @@ int kprobe_exceptions_notify(struct notifier_block *self, unsigned long val,
 	struct die_args *args = data;
 	int ret = NOTIFY_DONE;
 
-	if (args->regs && user_mode(args->regs))
+	if (args->regs && user_mode(args->regs))     /* 确保内核态 */
 		return ret;
 
 	if (val == DIE_GPF) {
@@ -1033,7 +1037,7 @@ int kprobe_exceptions_notify(struct notifier_block *self, unsigned long val,
 		 * To be potentially processing a kprobe fault and to
 		 * trust the result from kprobe_running(), we have
 		 * be non-preemptible.
-		 */
+		 *//* */
 		if (!preemptible() && kprobe_running() &&
 		    kprobe_fault_handler(args->regs, args->trapnr))
 			ret = NOTIFY_STOP;

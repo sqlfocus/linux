@@ -67,14 +67,15 @@
 	addr = ((kprobe_opcode_t *)(kallsyms_lookup_name(name)))
 #endif
 
-static int kprobes_initialized;
+/* kprobe hash表 */
+static int kprobes_initialized;      /* 初始化完毕标识 */
 static struct hlist_head kprobe_table[KPROBE_TABLE_SIZE];
 static struct hlist_head kretprobe_inst_table[KPROBE_TABLE_SIZE];
 
 /* NOTE: change this value only with kprobe_mutex held */
 static bool kprobes_all_disarmed;
 
-/* This protects kprobe_table and optimizing_list */
+/* 保护hash表的锁；This protects kprobe_table and optimizing_list */
 static DEFINE_MUTEX(kprobe_mutex);
 static DEFINE_PER_CPU(struct kprobe *, kprobe_instance) = NULL;
 static struct {
@@ -86,7 +87,7 @@ static raw_spinlock_t *kretprobe_table_lock_ptr(unsigned long hash)
 	return &(kretprobe_table_locks[hash].lock);
 }
 
-/* Blacklist -- list of struct kprobe_blacklist_entry */
+/* kprobe探测黑名单，Blacklist -- list of struct kprobe_blacklist_entry */
 static LIST_HEAD(kprobe_blacklist);
 
 #ifdef __ARCH_WANT_KPROBES_INSN_SLOT
@@ -1360,16 +1361,17 @@ static kprobe_opcode_t *kprobe_addr(struct kprobe *p)
 {
 	kprobe_opcode_t *addr = p->addr;
 
-	if ((p->symbol_name && p->addr) ||
+	if ((p->symbol_name && p->addr) ||          /* 不能同时指定符号和地址 */
 	    (!p->symbol_name && !p->addr))
 		goto invalid;
 
-	if (p->symbol_name) {
+	if (p->symbol_name) {                       /* 查找符号名对应的地址 */
 		kprobe_lookup_name(p->symbol_name, addr);
 		if (!addr)
 			return ERR_PTR(-ENOENT);
 	}
 
+    /* <TAKECARE!!!>KPROBE可探测任何地址，非仅符号名 */
 	addr = (kprobe_opcode_t *)(((char *)addr) + p->offset);
 	if (addr)
 		return addr;
@@ -1433,14 +1435,16 @@ static int check_kprobe_address_safe(struct kprobe *p,
 				     struct module **probed_mod)
 {
 	int ret;
-
+    
+    /* 不允许探测ftrace，除非设定了CONFIG_KPROBES_ON_FTRACE */
 	ret = arch_check_ftrace_location(p);
 	if (ret)
 		return ret;
 	jump_label_lock();
 	preempt_disable();
 
-	/* Ensure it is not in reserved area nor out of text */
+	/* 地址必须在内核地址空间；不能落在黑名单内；不能跨越jump label；
+       Ensure it is not in reserved area nor out of text */
 	if (!kernel_text_address((unsigned long) p->addr) ||
 	    within_kprobe_blacklist((unsigned long) p->addr) ||
 	    jump_label_text_reserved(p->addr, p->addr)) {
@@ -1448,7 +1452,7 @@ static int check_kprobe_address_safe(struct kprobe *p,
 		goto out;
 	}
 
-	/* Check if are we probing a module */
+	/* 如果探测模块儿，则加载此模块儿，Check if are we probing a module */
 	*probed_mod = __module_text_address((unsigned long) p->addr);
 	if (*probed_mod) {
 		/*
@@ -1478,6 +1482,7 @@ out:
 	return ret;
 }
 
+/* 注册kprobe探测点入口函数 */
 int register_kprobe(struct kprobe *p)
 {
 	int ret;
@@ -1485,12 +1490,14 @@ int register_kprobe(struct kprobe *p)
 	struct module *probed_mod;
 	kprobe_opcode_t *addr;
 
-	/* Adjust probe address from symbol */
+	/* 设定探测地址，1)从符号计算地址；2)添加偏移值；
+       Adjust probe address from symbol */
 	addr = kprobe_addr(p);
-	if (IS_ERR(addr))
+	if (IS_ERR(addr))                    /* 不能位于ERRNO范围 */
 		return PTR_ERR(addr);
 	p->addr = addr;
 
+    /* 查看是否已经注册？ */
 	ret = check_kprobe_rereg(p);
 	if (ret)
 		return ret;
@@ -1500,13 +1507,15 @@ int register_kprobe(struct kprobe *p)
 	p->nmissed = 0;
 	INIT_LIST_HEAD(&p->list);
 
+    /* 检查探测地址是否安全？ */
 	ret = check_kprobe_address_safe(p, &probed_mod);
 	if (ret)
 		return ret;
 
+    /* 加入hash表，kprobe_table[] */
 	mutex_lock(&kprobe_mutex);
 
-	old_p = get_kprobe(p->addr);
+	old_p = get_kprobe(p->addr);   /* 单个探测点多个处理函数 */
 	if (old_p) {
 		/* Since this may unoptimize old_p, locking text_mutex. */
 		ret = register_aggr_kprobe(old_p, p);
@@ -1514,7 +1523,7 @@ int register_kprobe(struct kprobe *p)
 	}
 
 	mutex_lock(&text_mutex);	/* Avoiding text modification */
-	ret = prepare_kprobe(p);
+	ret = prepare_kprobe(p);       /* 分配特定的内存地址用于保存原有的指令 */
 	mutex_unlock(&text_mutex);
 	if (ret)
 		goto out;
@@ -1523,10 +1532,12 @@ int register_kprobe(struct kprobe *p)
 	hlist_add_head_rcu(&p->hlist,
 		       &kprobe_table[hash_ptr(p->addr, KPROBE_HASH_BITS)]);
 
+    /* 使能探测点，修改探测点的指令码为int 3;
+       因此在执行到该地址时，必然会触发3号中断向量的处理流程do_int3 */
 	if (!kprobes_all_disarmed && !kprobe_disabled(p))
 		arm_kprobe(p);
 
-	/* Try to optimize kprobe */
+	/* 优化，Try to optimize kprobe */
 	try_to_optimize_kprobe(p);
 
 out:
@@ -1705,6 +1716,7 @@ void unregister_kprobes(struct kprobe **kps, int num)
 }
 EXPORT_SYMBOL_GPL(unregister_kprobes);
 
+/* 被注册到die_chain链，以响应探测句柄执行中出现错误的情形 */
 static struct notifier_block kprobe_exceptions_nb = {
 	.notifier_call = kprobe_exceptions_notify,
 	.priority = 0x7fffffff /* we need to be notified first */
@@ -2063,7 +2075,8 @@ static int __init populate_kprobe_blacklist(unsigned long *start,
 
 	for (iter = start; iter < end; iter++) {
 		entry = arch_deref_entry_point((void *)*iter);
-
+        
+        /* 地址必须位于内核中，并且能够找到对应的符号 */
 		if (!kernel_text_address(entry) ||
 		    !kallsyms_lookup_size_offset(entry, &size, &offset)) {
 			pr_err("Failed to find blacklist at %p\n",
@@ -2071,6 +2084,8 @@ static int __init populate_kprobe_blacklist(unsigned long *start,
 			continue;
 		}
 
+        /* 对应符号的起始、结束地址，插入黑名单；因为kpobe可以探测
+           任何地址，而非符号的起始或结束地址 */
 		ent = kmalloc(sizeof(*ent), GFP_KERNEL);
 		if (!ent)
 			return -ENOMEM;
@@ -2129,18 +2144,20 @@ static struct notifier_block kprobe_module_nb = {
 extern unsigned long __start_kprobe_blacklist[];
 extern unsigned long __stop_kprobe_blacklist[];
 
+/* kprobe模块儿的初始化入口 */
 static int __init init_kprobes(void)
 {
 	int i, err = 0;
 
 	/* FIXME allocate the probe table, currently defined statically */
-	/* initialize all list heads */
+	/* 初始化hash表头，initialize all list heads */
 	for (i = 0; i < KPROBE_TABLE_SIZE; i++) {
 		INIT_HLIST_HEAD(&kprobe_table[i]);
 		INIT_HLIST_HEAD(&kretprobe_inst_table[i]);
 		raw_spin_lock_init(&(kretprobe_table_locks[i].lock));
 	}
 
+    /* 设定不能被kprobe跟踪的代码列表 */
 	err = populate_kprobe_blacklist(__start_kprobe_blacklist,
 					__stop_kprobe_blacklist);
 	if (err) {
@@ -2148,6 +2165,7 @@ static int __init init_kprobes(void)
 		pr_err("Please take care of using kprobes.\n");
 	}
 
+    /* 初始化kretprobe_blacklist[]列表中符号对应的地址 */
 	if (kretprobe_blacklist_size) {
 		/* lookup the function address from its name */
 		for (i = 0; kretprobe_blacklist[i].name != NULL; i++) {
@@ -2171,14 +2189,18 @@ static int __init init_kprobes(void)
 	/* By default, kprobes are armed */
 	kprobes_all_disarmed = false;
 
+    /* 架构相关初始化 */
 	err = arch_init_kprobes();
 	if (!err)
+        /* 注册到通知链die_chain，处理int 3中断 */
 		err = register_die_notifier(&kprobe_exceptions_nb);
 	if (!err)
+        /* 注册到通知链module_notify_list */
 		err = register_module_notifier(&kprobe_module_nb);
 
 	kprobes_initialized = (err == 0);
 
+    /* 测试kprobe的接口API是否正常 */
 	if (!err)
 		init_test_probes();
 	return err;
