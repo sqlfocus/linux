@@ -67,12 +67,52 @@ EFLAGS中的TF标志), 大概的流程：
     :     struct kprobe->post_handler() 调用事后处理句柄
 
 * uprobe
-ab
+类似于kprobe，内核提供的用户态程序跟踪的标准接口
+
+** 执行流程
+执行流程类似于kprobe，不过探测点处理句柄的执行不是在int3/单步异常处理流程中；
+而是在返回用户态程序之前的处理流程。
+
+** 代码摘录
+ - init_uprobes()
+    : ~/kernel/events/uprobes.c
+    : UPROBE模块儿的初始化函数
+    :
+    : 流程
+    :   register_die_notifier()         注册异常处理句柄到die_chain
+ - uprobe_register()
+    : ~/kernel/events/uprobes.c
+    : 注册监控点
+    :
+    : 流程
+    :   alloc_uprobe()                  分配struct uprobe，添加到全局红黑树uprobes_tree
+    :   __uprobe_register()
+    :      register_for_each_vma()
+    :         install_breakpoint()      替换探测点为int3指令
+ - arch_uprobe_exception_notify()
+    : ~/kernel/events/uprobes.c
+    : 对应die_chain链的异常处理
+    :
+    : 流程
+    :   uprobe_pre_sstep_notifier()     处理int3异常
+    :   uprobe_post_sstep_notifier()    处理单步执行异常
+ - uprobe_notify_resume()
+    : ~/kernel/events/uprobes.c
+    : 中断处理完毕，返回用户态的处理过程中，如果设置了TIF_UPROBE，执行此函数
+    : 被prepare_exit_to_usermode()->exit_to_usermode_loop()调用
+    :
+    : 流程
+    :   clear_thread_flag()             清理标识
+    :   handle_singlestep()             单步异常，清理单步执行；恢复用户态流程
+    :   handle_swbp()                   int3异常
+    :     handler_chain()               执行探测点句柄
+    :     pre_ssout()                   单步执行
 
 * 参考
  - ~/Documentation/kprobes.txt
  - ~/Documentation/trace/kprobetrace.txt
  - ~/samples/kprobes/*.c
+ - ~/Documentation/trace/uprobetracer.txt
 
 
 

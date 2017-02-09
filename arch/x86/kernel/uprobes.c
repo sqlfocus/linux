@@ -827,7 +827,7 @@ int arch_uprobe_pre_xol(struct arch_uprobe *auprobe, struct pt_regs *regs)
 	current->thread.trap_nr = UPROBE_TRAP_NR;
 
 	utask->autask.saved_tf = !!(regs->flags & X86_EFLAGS_TF);
-	regs->flags |= X86_EFLAGS_TF;
+	regs->flags |= X86_EFLAGS_TF;            /* 设置单步执行 */
 	if (test_tsk_thread_flag(current, TIF_BLOCKSTEP))
 		set_task_blockstep(current, false);
 
@@ -896,25 +896,25 @@ int arch_uprobe_post_xol(struct arch_uprobe *auprobe, struct pt_regs *regs)
 	return err;
 }
 
-/* callback routine for handling exceptions. */
+/* uprobe对应int3和单步执行异常的处理句柄，callback routine for handling exceptions. */
 int arch_uprobe_exception_notify(struct notifier_block *self, unsigned long val, void *data)
 {
 	struct die_args *args = data;
 	struct pt_regs *regs = args->regs;
 	int ret = NOTIFY_DONE;
 
-	/* We are only interested in userspace traps */
+	/* 仅关心用户态，We are only interested in userspace traps */
 	if (regs && !user_mode(regs))
 		return NOTIFY_DONE;
 
 	switch (val) {
-	case DIE_INT3:
+	case DIE_INT3:           /* 处理int3异常(do_int3()) */
 		if (uprobe_pre_sstep_notifier(regs))
 			ret = NOTIFY_STOP;
 
 		break;
 
-	case DIE_DEBUG:
+	case DIE_DEBUG:          /* 处理单步异常(do_debug()) */
 		if (uprobe_post_sstep_notifier(regs))
 			ret = NOTIFY_STOP;
 

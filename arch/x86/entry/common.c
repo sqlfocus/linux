@@ -148,7 +148,7 @@ static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
 		if (cached_flags & _TIF_NEED_RESCHED)
 			schedule();
 
-		if (cached_flags & _TIF_UPROBE)
+		if (cached_flags & _TIF_UPROBE)  /* 设置了UPROBE标识，执行探测点处理句柄 */
 			uprobe_notify_resume(regs);
 
 		/* deal with pending signal delivery */

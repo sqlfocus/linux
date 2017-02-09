@@ -43,6 +43,7 @@
 #define UINSNS_PER_PAGE			(PAGE_SIZE/UPROBE_XOL_SLOT_BYTES)
 #define MAX_UPROBE_XOL_SLOTS		UINSNS_PER_PAGE
 
+/* 存储UPROBE探测点信息结构的红黑树 */
 static struct rb_root uprobes_tree = RB_ROOT;
 /*
  * allows us to skip the uprobe_mmap if there are no uprobe events active
@@ -62,15 +63,16 @@ static struct percpu_rw_semaphore dup_mmap_sem;
 /* Have a copy of original instruction */
 #define UPROBE_COPY_INSN	0
 
+/* 用户态程序跟踪UPROBE对应的数据结构 */
 struct uprobe {
 	struct rb_node		rb_node;	/* node in the rb tree */
 	atomic_t		ref;
 	struct rw_semaphore	register_rwsem;
 	struct rw_semaphore	consumer_rwsem;
 	struct list_head	pending_list;
-	struct uprobe_consumer	*consumers;
-	struct inode		*inode;		/* Also hold a ref to inode */
-	loff_t			offset;
+	struct uprobe_consumer	*consumers;   /* 用户探测点句柄，单链表以支持单点多处理 */
+	struct inode		*inode;		      /* 用户程序对应的文件节点 */
+	loff_t			offset;               /* 相对于程序加载位置的偏移 */
 	unsigned long		flags;
 
 	/*
@@ -463,7 +465,7 @@ static struct uprobe *__insert_uprobe(struct uprobe *uprobe)
  *
  * No matching uprobe; insert the uprobe in rb_tree;
  *	get a double refcount (access + creation) and return NULL.
- */
+ *//* 插入红黑树uprobes_tree */
 static struct uprobe *insert_uprobe(struct uprobe *uprobe)
 {
 	struct uprobe *u;
@@ -489,7 +491,7 @@ static struct uprobe *alloc_uprobe(struct inode *inode, loff_t offset)
 	init_rwsem(&uprobe->consumer_rwsem);
 
 	/* add to uprobes_tree, sorted on inode:offset */
-	cur_uprobe = insert_uprobe(uprobe);
+	cur_uprobe = insert_uprobe(uprobe);     /* 插入uprobes_tree */
 	/* a uprobe exists for this inode:offset combination */
 	if (cur_uprobe) {
 		kfree(uprobe);
@@ -812,7 +814,7 @@ register_for_each_vma(struct uprobe *uprobe, struct uprobe_consumer *new)
 		    vaddr_to_offset(vma, info->vaddr) != uprobe->offset)
 			goto unlock;
 
-		if (is_register) {
+		if (is_register) {          /* 替换探测点的指令，为int 3 */
 			/* consult only the "caller", new consumer. */
 			if (consumer_filter(new,
 					UPROBE_FILTER_REGISTER, mm))
@@ -836,8 +838,8 @@ register_for_each_vma(struct uprobe *uprobe, struct uprobe_consumer *new)
 
 static int __uprobe_register(struct uprobe *uprobe, struct uprobe_consumer *uc)
 {
-	consumer_add(uprobe, uc);
-	return register_for_each_vma(uprobe, uc);
+	consumer_add(uprobe, uc);                 /* 初始化struct uprobe->consumer */
+	return register_for_each_vma(uprobe, uc); /* 修改被探测程序的探测点指令 */
 }
 
 static void __uprobe_unregister(struct uprobe *uprobe, struct uprobe_consumer *uc)
@@ -869,7 +871,7 @@ static void __uprobe_unregister(struct uprobe *uprobe, struct uprobe_consumer *u
  *
  * Return errno if it cannot successully install probes
  * else return 0 (success)
- */
+ *//* 添加uprobe跟踪点 */
 int uprobe_register(struct inode *inode, loff_t offset, struct uprobe_consumer *uc)
 {
 	struct uprobe *uprobe;
@@ -888,14 +890,14 @@ int uprobe_register(struct inode *inode, loff_t offset, struct uprobe_consumer *
 
  retry:
 	uprobe = alloc_uprobe(inode, offset);
-	if (!uprobe)
+	if (!uprobe)        /* 分配struct uprobe并插入全局树uprobes_tree */
 		return -ENOMEM;
 	/*
 	 * We can race with uprobe_unregister()->delete_uprobe().
 	 * Check uprobe_is_active() and retry if it is false.
 	 */
 	down_write(&uprobe->register_rwsem);
-	ret = -EAGAIN;
+	ret = -EAGAIN;      /* 注册此探测节点 */
 	if (likely(uprobe_is_active(uprobe))) {
 		ret = __uprobe_register(uprobe, uc);
 		if (ret)
@@ -1629,13 +1631,13 @@ pre_ssout(struct uprobe *uprobe, struct pt_regs *regs, unsigned long bp_vaddr)
 	utask->vaddr = bp_vaddr;
 
 	err = arch_uprobe_pre_xol(&uprobe->arch, regs);
-	if (unlikely(err)) {
+	if (unlikely(err)) {                      /* 设置单步执行寄存器标识 */
 		xol_free_insn_slot(current);
 		return err;
 	}
 
-	utask->active_uprobe = uprobe;
-	utask->state = UTASK_SSTEP;
+	utask->active_uprobe = uprobe;            /* 指定对应的uprobe信息结构 */
+	utask->state = UTASK_SSTEP;               /* 设置单步执行标识 */
 	return 0;
 }
 
@@ -1866,7 +1868,7 @@ bool __weak arch_uretprobe_is_alive(struct return_instance *ret, enum rp_check c
 /*
  * Run handler and ask thread to singlestep.
  * Ensure all non-fatal signals cannot interrupt thread while it singlesteps.
- */
+ *//* int3异常处理后，返回用户态流程前被调用；执行注册的探测点句柄，并设置单步运行模式 */
 static void handle_swbp(struct pt_regs *regs)
 {
 	struct uprobe *uprobe;
@@ -1878,7 +1880,7 @@ static void handle_swbp(struct pt_regs *regs)
 		return handle_trampoline(regs);
 
 	uprobe = find_active_uprobe(bp_vaddr, &is_swbp);
-	if (!uprobe) {
+	if (!uprobe) {                /* 查找对应的UPROBE探测点信息结构 */
 		if (is_swbp > 0) {
 			/* No matching uprobe; signal SIGTRAP. */
 			send_sig(SIGTRAP, current, 0);
@@ -1898,7 +1900,7 @@ static void handle_swbp(struct pt_regs *regs)
 
 	/* change it in advance for ->handler() and restart */
 	instruction_pointer_set(regs, bp_vaddr);
-
+                                  /* 设置EIP重新指向探测点，待代码恢复后重新执行 */
 	/*
 	 * TODO: move copy_insn/etc into _register and remove this hack.
 	 * After we hit the bp, _unregister + _register can install the
@@ -1915,13 +1917,13 @@ static void handle_swbp(struct pt_regs *regs)
 	if (arch_uprobe_ignore(&uprobe->arch, regs))
 		goto out;
 
-	handler_chain(uprobe, regs);
+	handler_chain(uprobe, regs);  /* 探测点句柄 */
 
 	if (arch_uprobe_skip_sstep(&uprobe->arch, regs))
 		goto out;
 
 	if (!pre_ssout(uprobe, regs, bp_vaddr))
-		return;
+		return;                   /* 设置单步执行标识 */
 
 	/* arch_uprobe_skip_sstep() succeeded, or restart if can't singlestep */
 out:
@@ -1931,14 +1933,14 @@ out:
 /*
  * Perform required fix-ups and disable singlestep.
  * Allow pending signals to take effect.
- */
+ *//* 单步异常处理完毕，返回用户态执行流之前被调用；以关闭单步执行 */
 static void handle_singlestep(struct uprobe_task *utask, struct pt_regs *regs)
 {
 	struct uprobe *uprobe;
 	int err = 0;
 
 	uprobe = utask->active_uprobe;
-	if (utask->state == UTASK_SSTEP_ACK)
+	if (utask->state == UTASK_SSTEP_ACK)  /* 恢复原代码执行 */
 		err = arch_uprobe_post_xol(&uprobe->arch, regs);
 	else if (utask->state == UTASK_SSTEP_TRAPPED)
 		arch_uprobe_abort_xol(&uprobe->arch, regs);
@@ -1946,12 +1948,12 @@ static void handle_singlestep(struct uprobe_task *utask, struct pt_regs *regs)
 		WARN_ON_ONCE(1);
 
 	put_uprobe(uprobe);
-	utask->active_uprobe = NULL;
+	utask->active_uprobe = NULL;          /* 关闭 */
 	utask->state = UTASK_RUNNING;
 	xol_free_insn_slot(current);
 
 	spin_lock_irq(&current->sighand->siglock);
-	recalc_sigpending(); /* see uprobe_deny_signal() */
+	recalc_sigpending();                  /* 处理悬挂信号，see uprobe_deny_signal() */
 	spin_unlock_irq(&current->sighand->siglock);
 
 	if (unlikely(err)) {
@@ -1970,18 +1972,18 @@ static void handle_singlestep(struct uprobe_task *utask, struct pt_regs *regs)
  *
  * While returning to userspace, thread notices the TIF_UPROBE flag and calls
  * uprobe_notify_resume().
- */
+ *//* 中断处理完毕，返回用户态时，如果发现设置了TIF_UPROBE，则执行此函数 */
 void uprobe_notify_resume(struct pt_regs *regs)
 {
 	struct uprobe_task *utask;
 
-	clear_thread_flag(TIF_UPROBE);
+	clear_thread_flag(TIF_UPROBE);         /* 清除标识 */
 
 	utask = current->utask;
 	if (utask && utask->active_uprobe)
-		handle_singlestep(utask, regs);
+		handle_singlestep(utask, regs);    /* 单步异常后处理，恢复用户态流程 */
 	else
-		handle_swbp(regs);
+		handle_swbp(regs);                 /* int3异常后处理，设置单步异常 */
 }
 
 /*
@@ -1997,7 +1999,7 @@ int uprobe_pre_sstep_notifier(struct pt_regs *regs)
 	    (!current->utask || !current->utask->return_instances))
 		return 0;
 
-	set_thread_flag(TIF_UPROBE);
+	set_thread_flag(TIF_UPROBE);     /* 设置标识，表征出现中断 */
 	return 1;
 }
 
@@ -2014,15 +2016,17 @@ int uprobe_post_sstep_notifier(struct pt_regs *regs)
 		return 0;
 
 	utask->state = UTASK_SSTEP_ACK;
-	set_thread_flag(TIF_UPROBE);
+	set_thread_flag(TIF_UPROBE);     /* 设置标识，表征单步执行完毕 */
 	return 1;
 }
 
+/* int3处理句柄 */
 static struct notifier_block uprobe_exception_nb = {
 	.notifier_call		= arch_uprobe_exception_notify,
 	.priority		= INT_MAX-1,	/* notified after kprobes, kgdb */
 };
 
+/* uprobe模块儿初始化 */
 static int __init init_uprobes(void)
 {
 	int i;
@@ -2033,6 +2037,7 @@ static int __init init_uprobes(void)
 	if (percpu_init_rwsem(&dup_mmap_sem))
 		return -ENOMEM;
 
+    /* 注册异常处理句柄到die_chain，处理包括int3和单步执行异常 */
 	return register_die_notifier(&uprobe_exception_nb);
 }
 __initcall(init_uprobes);
