@@ -1480,7 +1480,7 @@ struct task_struct {
 	 */
 	struct thread_info thread_info;
 #endif
-	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
+	volatile long state;	/* 进程状态，-1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
@@ -1589,7 +1589,7 @@ struct task_struct {
 
 	struct restart_block restart_block;
 
-	pid_t pid;
+	pid_t pid;                          /* 进程ID */
 	pid_t tgid;
 
 #ifdef CONFIG_CC_STACKPROTECTOR
@@ -1602,11 +1602,11 @@ struct task_struct {
 	 * p->real_parent->pid)
 	 */
 	struct task_struct __rcu *real_parent; /* real parent process */
-	struct task_struct __rcu *parent; /* recipient of SIGCHLD, wait4() reports */
+	struct task_struct __rcu *parent;      /* 父进程信息结构，recipient of SIGCHLD, wait4() reports */
 	/*
 	 * children/sibling forms the list of my natural children
 	 */
-	struct list_head children;	/* list of my children */
+	struct list_head children;	/* 子进程信息结构，list of my children */
 	struct list_head sibling;	/* linkage in my parent's children list */
 	struct task_struct *group_leader;	/* threadgroup leader */
 

@@ -1,0 +1,28 @@
+#+TITLE: 进程简介
+#+AUTHOR: sqlfocus
+
+本文档摘录进程相关的内容，以期加强进程相关概念、理解进程管理等。
+
+
+* 简介
+System calls and exception handlers are well-defined interfaces into the 
+kernel.A process can begin executing in kernel-space only through one of 
+these interfaces—all access to the kernel is through these interfaces.
+进程通过系统调用和异常访问内核资源。
+
+All processes are descendants of the init process, whose PID is one。
+所有等进程源自init，进程号1.
+
+* 全局变量
+** current
+** init_task
+** task list
+
+* 参考
+
+
+
+
+
+
+
