@@ -3,11 +3,16 @@
 
 #include <linux/rcupdate.h>
 
+/* 进程可通过setpgrp()加入到相同的进程组，它们的PGID具有相同的值，指向进程
+   组leader的PID；进程组主要用来管理信号，n多系统引用需要以组为单位发送信
+   号。
+
+   进程可通过setsid()创建会话组；会话组主要用于terminal编程。 */
 enum pid_type
 {
-	PIDTYPE_PID,
-	PIDTYPE_PGID,
-	PIDTYPE_SID,
+	PIDTYPE_PID,      /* 进程ID */
+	PIDTYPE_PGID,     /* 组ID */
+	PIDTYPE_SID,      /* 会话ID */
 	PIDTYPE_MAX
 };
 
@@ -45,30 +50,30 @@ enum pid_type
  * struct upid is used to get the id of the struct pid, as it is
  * seen in particular namespace. Later the struct pid is found with
  * find_pid_ns() using the int nr and struct pid_namespace *ns.
- */
-
+ *//* 在特定PID namespace可见的信息 */
 struct upid {
 	/* Try to keep pid_chain in the same cacheline as nr for find_vpid */
-	int nr;
-	struct pid_namespace *ns;
-	struct hlist_node pid_chain;
+	int nr;                         /* 此命名空间的PID */
+	struct pid_namespace *ns;       /* nr所属的命名空间 */
+	struct hlist_node pid_chain;    /* upid hash表节点，
+                                       对应pid_hash链(include/linux/pid.h) */
 };
 
+/* 内核中表征PID的结构 */
 struct pid
 {
-	atomic_t count;
-	unsigned int level;
-	/* lists of tasks that use this pid */
-	struct hlist_head tasks[PIDTYPE_MAX];
+	atomic_t count;                            /* 引用次数 */
+	unsigned int level;                        /* pid命名空间的深度，即可见深度 */
+	struct hlist_head tasks[PIDTYPE_MAX];      /* 使用此结构的所有struct task_struct */
 	struct rcu_head rcu;
-	struct upid numbers[1];
+	struct upid numbers[1];                    /* 索引为PID命名空间嵌套深度 */
 };
 
 extern struct pid init_struct_pid;
 
 struct pid_link
 {
-	struct hlist_node node;
+	struct hlist_node node;                    /* 连接入struct pid->tasks[] */
 	struct pid *pid;
 };
 
@@ -160,7 +165,6 @@ static inline bool is_child_reaper(struct pid *pid)
  *
  * see also task_xid_nr() etc in include/linux/sched.h
  */
-
 static inline pid_t pid_nr(struct pid *pid)
 {
 	pid_t nr = 0;

@@ -40,8 +40,8 @@ struct	rusage {
 };
 
 struct rlimit {
-	__kernel_ulong_t	rlim_cur;
-	__kernel_ulong_t	rlim_max;
+	__kernel_ulong_t	rlim_cur;   /* soft limit, 当前限制 */
+	__kernel_ulong_t	rlim_max;   /* hard limit, 最大限制 */
 };
 
 #define RLIM64_INFINITY		(~0ULL)

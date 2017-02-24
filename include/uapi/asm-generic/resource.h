@@ -19,8 +19,8 @@
 #define RLIMIT_CORE		4	/* max core file size */
 
 #ifndef RLIMIT_RSS
-# define RLIMIT_RSS		5	/* max resident set size */
-#endif
+# define RLIMIT_RSS		5	/* max resident set size; */
+#endif/* portion of memory occupied by a process that is held in main memory */
 
 #ifndef RLIMIT_NPROC
 # define RLIMIT_NPROC		6	/* max number of processes */

@@ -21,9 +21,9 @@ struct old_utsname {
 	char machine[65];
 };
 
-struct new_utsname {
-	char sysname[__NEW_UTS_LEN + 1];
-	char nodename[__NEW_UTS_LEN + 1];
+struct new_utsname {        /* 可以利用uname工具查看 */
+	char sysname[__NEW_UTS_LEN + 1];     /* 或/proc/sys/kernel/ostype */
+	char nodename[__NEW_UTS_LEN + 1];    /* 或/proc/sys/kernel/osrelease */
 	char release[__NEW_UTS_LEN + 1];
 	char version[__NEW_UTS_LEN + 1];
 	char machine[__NEW_UTS_LEN + 1];

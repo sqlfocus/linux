@@ -380,12 +380,12 @@ static int bprm_mm_init(struct linux_binprm *bprm)
 	int err;
 	struct mm_struct *mm = NULL;
 
-	bprm->mm = mm = mm_alloc();
+	bprm->mm = mm = mm_alloc();     /* 分配任务结构体 */
 	err = -ENOMEM;
 	if (!mm)
 		goto err;
 
-	err = __bprm_mm_init(bprm);
+	err = __bprm_mm_init(bprm);     /* 建立栈 */
 	if (err)
 		goto err;
 
@@ -1620,7 +1620,8 @@ static int exec_binprm(struct linux_binprm *bprm)
 	rcu_read_lock();
 	old_vpid = task_pid_nr_ns(current, task_active_pid_ns(current->parent));
 	rcu_read_unlock();
-
+    
+    /* 查找可执行文件对应的二进制格式，如ELF */
 	ret = search_binary_handler(bprm);
 	if (ret >= 0) {
 		audit_bprm(bprm);
@@ -1681,6 +1682,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	check_unsafe_exec(bprm);
 	current->in_execve = 1;
 
+    /* 打开执行文件 */
 	file = do_open_execat(fd, filename, flags);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
@@ -1712,6 +1714,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	}
 	bprm->interp = bprm->filename;
 
+    /* 初始化内存空间、运行栈 */
 	retval = bprm_mm_init(bprm);
 	if (retval)
 		goto out_unmark;
@@ -1724,10 +1727,12 @@ static int do_execveat_common(int fd, struct filename *filename,
 	if ((retval = bprm->envc) < 0)
 		goto out;
 
+    /* 权限相关 */
 	retval = prepare_binprm(bprm);
 	if (retval < 0)
 		goto out;
 
+    /* 拷贝参数、环境变量等 */
 	retval = copy_strings_kernel(1, &bprm->filename, bprm);
 	if (retval < 0)
 		goto out;
@@ -1741,6 +1746,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	if (retval < 0)
 		goto out;
 
+    /* 执行 */
 	retval = exec_binprm(bprm);
 	if (retval < 0)
 		goto out;

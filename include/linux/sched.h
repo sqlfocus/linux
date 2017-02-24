@@ -205,13 +205,13 @@ extern void proc_sched_set_task(struct task_struct *p);
  * mistake.
  */
 #define TASK_RUNNING		0
-#define TASK_INTERRUPTIBLE	1
-#define TASK_UNINTERRUPTIBLE	2
-#define __TASK_STOPPED		4
-#define __TASK_TRACED		8
+#define TASK_INTERRUPTIBLE	1           /* 等待事件而睡眠的进程 */
+#define TASK_UNINTERRUPTIBLE	2       /* 不能被中断的睡眠状态 */
+#define __TASK_STOPPED		4           /* 有目的的暂停 */
+#define __TASK_TRACED		8           /* 区分__TASK_STOPPED中的被追踪 */
 /* in tsk->exit_state */
-#define EXIT_DEAD		16
-#define EXIT_ZOMBIE		32
+#define EXIT_DEAD		16              /* wait()调用后，内存彻底清理前 */
+#define EXIT_ZOMBIE		32              /* 进程退出后，wait()调用前 */
 #define EXIT_TRACE		(EXIT_ZOMBIE | EXIT_DEAD)
 /* in tsk->state again */
 #define TASK_DEAD		64
@@ -784,7 +784,7 @@ struct signal_struct {
 	 * getrlimit/setrlimit use task_lock(current->group_leader) to
 	 * protect this instead of the siglock, because they really
 	 * have no need to disable irqs.
-	 */
+	 *//* 进程的资源限制，可通过/proc/self/limits查看 */
 	struct rlimit rlim[RLIM_NLIMITS];
 
 #ifdef CONFIG_BSD_PROCESS_ACCT
@@ -1237,8 +1237,8 @@ struct pipe_inode_info;
 struct uts_namespace;
 
 struct load_weight {
-	unsigned long weight;
-	u32 inv_weight;
+	unsigned long weight;  /* 负载 */
+	u32 inv_weight;        /* 比例因子(用于除) */
 };
 
 /*
@@ -1335,15 +1335,16 @@ struct sched_statistics {
 };
 #endif
 
+/* 利用此结构，调度器可以更粗的粒度调度，而不仅仅以任务的粒度 */
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
 	struct list_head	group_node;
-	unsigned int		on_rq;
+	unsigned int		on_rq;      /* 是否在run queue? */
 
-	u64			exec_start;
-	u64			sum_exec_runtime;
-	u64			vruntime;
+	u64			exec_start;         /* 计算实时钟基准 */
+	u64			sum_exec_runtime;   /* 消耗掉的CPU时间，实时钟? */
+	u64			vruntime;           /* 虚时钟消耗 */
 	u64			prev_sum_exec_runtime;
 
 	u64			nr_migrations;
@@ -1472,6 +1473,8 @@ struct tlbflush_unmap_batch {
 	bool writable;
 };
 
+/* 定义了所有和进程相关的信息；此结构可划分为几块，如执行状态、虚拟内存、
+   权限、打开的文件、硬件环境信息(寄存器等)、进程间通信信息、信号处理等 */
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -1480,10 +1483,10 @@ struct task_struct {
 	 */
 	struct thread_info thread_info;
 #endif
-	volatile long state;	/* 进程状态，-1 unrunnable, 0 runnable, >0 stopped */
-	void *stack;
+	volatile long state;	/* 进程状态，TASK_RUNNING... */
+	void *stack;            /* 内核态栈 */
 	atomic_t usage;
-	unsigned int flags;	/* per process flags, defined below */
+	unsigned int flags;	    /* per process flags, defined below */
 	unsigned int ptrace;
 
 #ifdef CONFIG_SMP
@@ -1500,13 +1503,14 @@ struct task_struct {
 #endif
 	int on_rq;
 
-	int prio, static_prio, normal_prio;
-	unsigned int rt_priority;
-	const struct sched_class *sched_class;
-	struct sched_entity se;
+	int prio, static_prio, normal_prio;     /* 动态、静态、普通优先级 */
+	unsigned int rt_priority;               /* real-time进程优先级，0-99, 仅用于内核线程??? */
+	const struct sched_class *sched_class;  /* 调度类(每个进程只能属于某个调度类) */
+	struct sched_entity se;                 /* 以组为粒度的调度(对比以进程为单位)；
+                                               先以组为单位调度，再在组内调度 */
 	struct sched_rt_entity rt;
 #ifdef CONFIG_CGROUP_SCHED
-	struct task_group *sched_task_group;
+	struct task_group *sched_task_group;    /**/
 #endif
 	struct sched_dl_entity dl;
 
@@ -1519,7 +1523,7 @@ struct task_struct {
 	unsigned int btrace_seq;
 #endif
 
-	unsigned int policy;
+	unsigned int policy;                    /* 调度策略 */
 	int nr_cpus_allowed;
 	cpumask_t cpus_allowed;
 
@@ -1546,15 +1550,23 @@ struct task_struct {
 	struct rb_node pushable_dl_tasks;
 #endif
 
-	struct mm_struct *mm, *active_mm;
+    /* 内核线程不访问进程用户态空间部分，因此如果切换到内核线程，可以利用
+       lazy TLB handling优化内存切换；为了确保内核线程不修改进程的用户态
+       地址，设置mm=NULL, 但内核可能需要访问用户态地址空间，因此设置active_mm
+       保留内核的访问权 
+       
+       lazy TLB：切换到内核线程时，不刷新TLB；以防备内核线程执行后切换回原
+                 用户进程；只有用户进程切换才刷新TLB
+     */
+	struct mm_struct *mm, *active_mm;    /* 用户态进程运行时，此两值相同 */
 	/* per-thread vma caching */
 	u32 vmacache_seqnum;
 	struct vm_area_struct *vmacache[VMACACHE_SIZE];
 #if defined(SPLIT_RSS_COUNTING)
 	struct task_rss_stat	rss_stat;
 #endif
-/* task state */
-	int exit_state;
+    /* 进程退出状态 */
+	int exit_state;             /* EXIT_DEAD... */
 	int exit_code, exit_signal;
 	int pdeath_signal;  /*  The signal sent when the parent dies  */
 	unsigned long jobctl;	/* JOBCTL_*, siglock protected */
@@ -1589,8 +1601,8 @@ struct task_struct {
 
 	struct restart_block restart_block;
 
-	pid_t pid;                          /* 进程ID */
-	pid_t tgid;
+	pid_t pid;                          /* global 进程ID; 在init进程的命名空间唯一 */
+	pid_t tgid;                         /* global thread group id; */
 
 #ifdef CONFIG_CC_STACKPROTECTOR
 	/* Canary value for the -fstack-protector gcc feature */
@@ -1606,10 +1618,10 @@ struct task_struct {
 	/*
 	 * children/sibling forms the list of my natural children
 	 */
-	struct list_head children;	/* 子进程信息结构，list of my children */
-	struct list_head sibling;	/* linkage in my parent's children list */
-	struct task_struct *group_leader;	/* threadgroup leader */
-
+	struct list_head children;	/* 子进程，list of my children */
+	struct list_head sibling;	/* 兄弟，linkage in my parent's children list */
+	struct task_struct *group_leader;	   /* threadgroup leader，所有cloned
+                                              线程指向leader的struct task_struct */
 	/*
 	 * ptraced is the list of tasks this task is using ptrace on.
 	 * This includes both natural children and PTRACE_ATTACH targets.
@@ -1619,7 +1631,7 @@ struct task_struct {
 	struct list_head ptrace_entry;
 
 	/* PID/PID hash table linkage. */
-	struct pid_link pids[PIDTYPE_MAX];
+	struct pid_link pids[PIDTYPE_MAX];  /* 所有共享struct pid的任务列表，插入节点 */
 	struct list_head thread_group;
 	struct list_head thread_node;
 
@@ -1679,7 +1691,8 @@ struct task_struct {
 	struct fs_struct *fs;
 /* open file information */
 	struct files_struct *files;
-/* namespaces */
+/* 子系统命名空间指针集合，用于虚拟化隔离；
+   指针类型，因此可以被多个进程共享，单个修改对所有共享进程可见 */
 	struct nsproxy *nsproxy;
 /* signal handlers */
 	struct signal_struct *signal;
@@ -2616,6 +2629,7 @@ extern void ia64_set_curr_task(int cpu, struct task_struct *p);
 
 void yield(void);
 
+/* 内核栈，struct task_struct->stack */
 union thread_union {
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	struct thread_info thread_info;

@@ -1504,6 +1504,7 @@ static __latent_entropy struct task_struct *copy_process(
 	if (retval)
 		goto fork_out;
 
+    /* 赋值父进程的任务结构体；仅有一处不同，各自具有独立的内核栈->stack */
 	retval = -ENOMEM;
 	p = dup_task_struct(current, node);
 	if (!p)
@@ -1526,6 +1527,7 @@ static __latent_entropy struct task_struct *copy_process(
 	}
 	current->flags &= ~PF_NPROC_EXCEEDED;
 
+    /* */
 	retval = copy_creds(p, clone_flags);
 	if (retval < 0)
 		goto bad_fork_free;
@@ -1621,7 +1623,7 @@ static __latent_entropy struct task_struct *copy_process(
 	p->sequential_io_avg	= 0;
 #endif
 
-	/* Perform scheduler related setup. Assign this task to a CPU. */
+	/* 调度相关初始化，Perform scheduler related setup. Assign this task to a CPU. */
 	retval = sched_fork(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_policy;
@@ -1632,34 +1634,34 @@ static __latent_entropy struct task_struct *copy_process(
 	retval = audit_alloc(p);
 	if (retval)
 		goto bad_fork_cleanup_perf;
-	/* copy all the process information */
+	/* 资源复制，copy all the process information */
 	shm_init_task(p);
-	retval = copy_semundo(clone_flags, p);
+	retval = copy_semundo(clone_flags, p);   /* system V信号量，COPY_SYSVSEM */
 	if (retval)
 		goto bad_fork_cleanup_audit;
-	retval = copy_files(clone_flags, p);
+	retval = copy_files(clone_flags, p);     /* 文件描述符，CLONE_FILES */
 	if (retval)
 		goto bad_fork_cleanup_semundo;
-	retval = copy_fs(clone_flags, p);
+	retval = copy_fs(clone_flags, p);        /* 文件系统，CLONE_FS */
 	if (retval)
 		goto bad_fork_cleanup_files;
-	retval = copy_sighand(clone_flags, p);
+	retval = copy_sighand(clone_flags, p);   /* 信号处理句柄，CLONE_SIGHAND/CLONE_THREAD */
 	if (retval)
 		goto bad_fork_cleanup_fs;
-	retval = copy_signal(clone_flags, p);
+	retval = copy_signal(clone_flags, p);    /* 信号处理的non-handler-specific部分，CLONE_THREAD */
 	if (retval)
 		goto bad_fork_cleanup_sighand;
-	retval = copy_mm(clone_flags, p);
+	retval = copy_mm(clone_flags, p);        /* 地址空间，COPY_MM */
 	if (retval)
 		goto bad_fork_cleanup_signal;
-	retval = copy_namespaces(clone_flags, p);
+	retval = copy_namespaces(clone_flags, p);/* 命名空间，CLONE_NEWxyz */
 	if (retval)
 		goto bad_fork_cleanup_mm;
-	retval = copy_io(clone_flags, p);
+	retval = copy_io(clone_flags, p);        /* */
 	if (retval)
 		goto bad_fork_cleanup_namespaces;
 	retval = copy_thread_tls(clone_flags, stack_start, stack_size, p, tls);
-	if (retval)
+	if (retval)                              /* */
 		goto bad_fork_cleanup_io;
 
 	if (pid != &init_struct_pid) {
@@ -1703,7 +1705,7 @@ static __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_all_latency_tracing(p);
 
-	/* ok, now we should be set up.. */
+	/* 初始化进程结构体部分变量，ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
 		p->exit_signal = -1;
@@ -1901,6 +1903,10 @@ struct task_struct *fork_idle(int cpu)
  * It copies the process, and if successful kick-starts
  * it and waits for it to finish using the VM if required.
  */
+/* 当子进程退出时，clone_flags低8位包含了发送到parent进程的信号(一般为SIGCHLD)；
+   其余部分包含了创建时，需要copy的部分 */
+/* stack_start指用户态栈的起始地址 */
+/* parent_tidptr/child_tidptr，用户态地址，存放TID */
 long _do_fork(unsigned long clone_flags,
 	      unsigned long stack_start,
 	      unsigned long stack_size,
@@ -1930,6 +1936,7 @@ long _do_fork(unsigned long clone_flags,
 			trace = 0;
 	}
 
+    /* 产生子进程 */
 	p = copy_process(clone_flags, stack_start, stack_size,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
 	add_latent_entropy();
@@ -1943,24 +1950,28 @@ long _do_fork(unsigned long clone_flags,
 
 		trace_sched_process_fork(current, p);
 
+        /* 确定PID */
 		pid = get_task_pid(p, PIDTYPE_PID);
 		nr = pid_vnr(pid);
 
 		if (clone_flags & CLONE_PARENT_SETTID)
 			put_user(nr, parent_tidptr);
 
+        /* 初始化vfork完成变量(vfork需要保证子进程先于父进程被调度运行) */
 		if (clone_flags & CLONE_VFORK) {
 			p->vfork_done = &vfork;
 			init_completion(&vfork);
 			get_task_struct(p);
 		}
 
+        /* 进程进入运行状态 */
 		wake_up_new_task(p);
 
-		/* forking complete and child started to run, tell ptracer */
+		/* 向监控进程发送信号，SIGTRAP，forking complete and child started to run, tell ptracer */
 		if (unlikely(trace))
 			ptrace_event_pid(trace, pid);
 
+        /* vfork情形，父进程等待子进程运行后，才能从vfork()返回 */
 		if (clone_flags & CLONE_VFORK) {
 			if (!wait_for_vfork_done(p, &vfork))
 				ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
@@ -1988,7 +1999,13 @@ long do_fork(unsigned long clone_flags,
 #endif
 
 /*
- * Create a kernel thread.
+ * 创建内核线程(和内核本身并行运行)
+ *  1) 运行在CPU的supervisor模式
+ *  2) 只能访问内核部分的虚拟地址，即(>TASK_SIZE的部分)
+ *
+ * 一般有两种类型:
+ *  1) 启动后，等待内核触发以执行特定任务
+ *  2) 启动后，以固定周期运行，检查特定资源是否超限，超限后采取特定处理方式
  */
 pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {

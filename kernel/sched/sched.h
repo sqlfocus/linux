@@ -373,16 +373,16 @@ struct cfs_bandwidth { };
 
 /* CFS-related fields in a runqueue */
 struct cfs_rq {
-	struct load_weight load;
-	unsigned int nr_running, h_nr_running;
+	struct load_weight load;        /* 累积负载 */
+	unsigned int nr_running, h_nr_running; /* 运行队列上运行进程数 */
 
-	u64 exec_clock;
-	u64 min_vruntime;
+	u64 exec_clock;                 /* 运行队列的实时钟 */
+	u64 min_vruntime;               /* 所有进程最小的virtual run time；单调递增 */
 #ifndef CONFIG_64BIT
 	u64 min_vruntime_copy;
 #endif
 
-	struct rb_root tasks_timeline;
+	struct rb_root tasks_timeline;  /* 红黑树表示的运行队列，利用每个调度体的vruntime排序 */
 	struct rb_node *rb_leftmost;
 
 	/*
@@ -616,7 +616,7 @@ struct rq {
 	unsigned long nr_load_updates;
 	u64 nr_switches;
 
-	struct cfs_rq cfs;
+	struct cfs_rq cfs;     /* 内嵌的子队列，对应cfs、rt调度 */
 	struct rt_rq rt;
 	struct dl_rq dl;
 
@@ -748,6 +748,7 @@ static inline void update_idle_core(struct rq *rq)
 static inline void update_idle_core(struct rq *rq) { }
 #endif
 
+/* 每CPU的运行队列数组 */
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
@@ -1216,9 +1217,13 @@ extern const u32 sched_prio_to_wmult[40];
 
 #define RETRY_TASK		((void *)-1UL)
 
+/*
+每个调度类需要此结构体的一个实例；调度类以flat hierarchy方式组织：real-time
+类型的进程最重要，必须在completely fair进程之前被处理；依次类推，idle进程只
+当没有什么可做当时候才被调用。*/
 struct sched_class {
-	const struct sched_class *next;
-
+	const struct sched_class *next;  /* 按优先级串联各调度类，仅在编译器改动；
+                                        无法动态连入调度类 */
 	void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);
 	void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);
 	void (*yield_task) (struct rq *rq);

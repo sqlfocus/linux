@@ -27,10 +27,10 @@ struct pid_namespace {
 	struct rcu_head rcu;
 	int last_pid;
 	unsigned int nr_hashed;
-	struct task_struct *child_reaper;
+	struct task_struct *child_reaper;  /* 用于类似于init的进程调用wait4()收割zombie */
 	struct kmem_cache *pid_cachep;
-	unsigned int level;
-	struct pid_namespace *parent;
+	unsigned int level;                /* 进程空间深度 */
+	struct pid_namespace *parent;      /* 父进程pid空间 */
 #ifdef CONFIG_PROC_FS
 	struct vfsmount *proc_mnt;
 	struct dentry *proc_self;

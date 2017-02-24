@@ -734,6 +734,7 @@ int tg_nop(struct task_group *tg, void *data)
 }
 #endif
 
+/* 根据优先级设置进程的负载，即占用CPU的比重 */
 static void set_load_weight(struct task_struct *p)
 {
 	int prio = p->static_prio - MAX_RT_PRIO;
@@ -741,13 +742,14 @@ static void set_load_weight(struct task_struct *p)
 
 	/*
 	 * SCHED_IDLE tasks get minimal weight:
-	 */
+	 *//* IDLE任务拥有最低的比重 */
 	if (idle_policy(p->policy)) {
 		load->weight = scale_load(WEIGHT_IDLEPRIO);
 		load->inv_weight = WMULT_IDLEPRIO;
 		return;
 	}
 
+    /* 通过查表，避免浮点运算，加速 */
 	load->weight = scale_load(sched_prio_to_weight[prio]);
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
@@ -887,12 +889,14 @@ static inline int normal_prio(struct task_struct *p)
 {
 	int prio;
 
-	if (task_has_dl_policy(p))
+	if (task_has_dl_policy(p))      /* deadline任务，具有负值优先级(最高优先级) */
 		prio = MAX_DL_PRIO-1;
-	else if (task_has_rt_policy(p))
+	else if (task_has_rt_policy(p)) /* 实时任务；内核0-99优先级依次降低，而外
+                                       围设置正好相反，值越高优先级越高，因此
+                                       此处为换算翻转 */
 		prio = MAX_RT_PRIO-1 - p->rt_priority;
 	else
-		prio = __normal_prio(p);
+		prio = __normal_prio(p);    /* 普通任务，则直接返回静态优先级 */
 	return prio;
 }
 
@@ -910,7 +914,9 @@ static int effective_prio(struct task_struct *p)
 	 * If we are RT tasks or we were boosted to RT priority,
 	 * keep the priority unchanged. Otherwise, update priority
 	 * to the normal priority:
-	 */
+	 *//* 此处就是所谓的避免优先级翻转；普通任务优先级提升为实时任务后，
+          采用其高优先级，避免优先级带来的锁竞态问题；因此不能依赖初始
+          设置的调度策略判断，而是依靠动态优先级数值 */
 	if (!rt_prio(p->prio))
 		return p->normal_prio;
 	return p->prio;
@@ -2366,7 +2372,7 @@ static inline void init_schedstats(void) {}
 
 /*
  * fork()/clone()-time setup:
- */
+ *//* 生成子进程后，调度系统介入的窗口，用于初始化调度信息等 */
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
@@ -2382,7 +2388,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 	/*
 	 * Make sure we do not leak PI boosting priority to the child.
-	 */
+	 *//* 避免子进程直接提升权限 */
 	p->prio = current->normal_prio;
 
 	/*
@@ -2557,14 +2563,14 @@ extern void init_dl_bw(struct dl_bw *dl_b);
  * This function will do some initial scheduler statistics housekeeping
  * that must be done for every newly created context, then puts the task
  * on the runqueue and wakes it.
- */
+ *//* 创建进程后，正式加入调度队列 */
 void wake_up_new_task(struct task_struct *p)
 {
 	struct rq_flags rf;
 	struct rq *rq;
 
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
-	p->state = TASK_RUNNING;
+	p->state = TASK_RUNNING;            /* 设置运行状态 */
 #ifdef CONFIG_SMP
 	/*
 	 * Fork balancing, do it here and not earlier because:
@@ -2579,10 +2585,10 @@ void wake_up_new_task(struct task_struct *p)
 	rq = __task_rq_lock(p, &rf);
 	post_init_entity_util_avg(&p->se);
 
-	activate_task(rq, p, 0);
+	activate_task(rq, p, 0);            /* 加入调度队列 */
 	p->on_rq = TASK_ON_RQ_QUEUED;
 	trace_sched_wakeup_new(p);
-	check_preempt_curr(rq, p, WF_FORK);
+	check_preempt_curr(rq, p, WF_FORK); /* 内核抢占 */
 #ifdef CONFIG_SMP
 	if (p->sched_class->task_woken) {
 		/*
@@ -2857,7 +2863,7 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 
 /*
  * context_switch - switch to the new MM and the new thread's register state.
- */
+ *//* 任务切换 */
 static __always_inline struct rq *
 context_switch(struct rq *rq, struct task_struct *prev,
 	       struct task_struct *next, struct pin_cookie cookie)
@@ -2875,14 +2881,14 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 */
 	arch_start_context_switch(prev);
 
-	if (!mm) {
-		next->active_mm = oldmm;
+	if (!mm) {                               /* 切换内存 */
+		next->active_mm = oldmm;             /* 内核线程"借用"老进程的内存表 */
 		atomic_inc(&oldmm->mm_count);
 		enter_lazy_tlb(oldmm, next);
 	} else
 		switch_mm_irqs_off(oldmm, mm, next);
 
-	if (!prev->mm) {
+	if (!prev->mm) {                         /* 内核线程被换出 */
 		prev->active_mm = NULL;
 		rq->prev_mm = oldmm;
 	}
@@ -2896,7 +2902,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	spin_release(&rq->lock.dep_map, 1, _THIS_IP_);
 
 	/* Here we just switch the register state and the stack. */
-	switch_to(prev, next, prev);
+	switch_to(prev, next, prev);             /* 切换寄存器，内核栈等 */
 	barrier();
 
 	return finish_task_switch(prev);
@@ -3071,7 +3077,7 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 /*
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
- */
+ *//* 周期性调度入口，由时钟中断触发，频率HZ */
 void scheduler_tick(void)
 {
 	int cpu = smp_processor_id();
@@ -3081,9 +3087,9 @@ void scheduler_tick(void)
 	sched_clock_tick();
 
 	raw_spin_lock(&rq->lock);
-	update_rq_clock(rq);
-	curr->sched_class->task_tick(rq, curr, 0);
-	cpu_load_update_active(rq);
+	update_rq_clock(rq);        /* 更新运行队列时钟 */
+	curr->sched_class->task_tick(rq, curr, 0);  /* 调度类的函数 */
+	cpu_load_update_active(rq); /* 更新运行队列的CPU负载 */
 	calc_global_load_tick(rq);
 	raw_spin_unlock(&rq->lock);
 
@@ -3340,7 +3346,7 @@ static void __sched notrace __schedule(bool preempt)
 
 	cpu = smp_processor_id();
 	rq = cpu_rq(cpu);
-	prev = rq->curr;
+	prev = rq->curr;                      /* 记录正运行进程 */
 
 	schedule_debug(prev);
 
@@ -3364,7 +3370,7 @@ static void __sched notrace __schedule(bool preempt)
 	switch_count = &prev->nivcsw;
 	if (!preempt && prev->state) {
 		if (unlikely(signal_pending_state(prev->state, prev))) {
-			prev->state = TASK_RUNNING;
+			prev->state = TASK_RUNNING;   /* 收到了信号 */
 		} else {
 			deactivate_task(rq, prev, DEQUEUE_SLEEP);
 			prev->on_rq = 0;
@@ -3386,14 +3392,14 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	if (task_on_rq_queued(prev))
-		update_rq_clock(rq);
+		update_rq_clock(rq);              /* 更新运行队列时钟 */
 
-	next = pick_next_task(rq, prev, cookie);
-	clear_tsk_need_resched(prev);
+	next = pick_next_task(rq, prev, cookie);  /* 选取运行任务 */
+	clear_tsk_need_resched(prev);         /* 清除TIF_NEED_RESCHED标识 */
 	clear_preempt_need_resched();
 	rq->clock_skip_update = 0;
 
-	if (likely(prev != next)) {
+	if (likely(prev != next)) {           /* 进程切换 */
 		rq->nr_switches++;
 		rq->curr = next;
 		++*switch_count;
@@ -3447,6 +3453,11 @@ static inline void sched_submit_work(struct task_struct *tsk)
 		blk_schedule_flush_plug(tsk);
 }
 
+/* 主调度入口函数，内核代码中很多地方可调用它，比如系统调用返回之前等
+   <NOTE!!!>另外，__sched标识符表示此函数可能调用schedule()，编译器借
+            助此标识将代码放置在.sched.text代码段，以使得栈追踪或类似
+            功能的函数不输出调度相关的信息，因为调度不是正常代码路径的
+            部分，大多数情况下不被感兴趣 */
 asmlinkage __visible void __sched schedule(void)
 {
 	struct task_struct *tsk = current;

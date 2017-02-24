@@ -29,12 +29,14 @@ struct fs_struct;
  */
 struct nsproxy {
 	atomic_t count;
-	struct uts_namespace *uts_ns;
-	struct ipc_namespace *ipc_ns;
-	struct mnt_namespace *mnt_ns;
+	struct uts_namespace *uts_ns;    /* unix timesharing system, 
+                                        包括运行的内核、版本、底层架构等 */
+	struct ipc_namespace *ipc_ns;    /* 进程间通信相关信息 */
+	struct mnt_namespace *mnt_ns;    /* mounted filesystem */
 	struct pid_namespace *pid_ns_for_children;
-	struct net 	     *net_ns;
-	struct cgroup_namespace *cgroup_ns;
+	struct net 	     *net_ns;        /* networking-related params */
+	struct cgroup_namespace *cgroup_ns;  /* per-user info, limit resource 
+                                            usage for individual users */
 };
 extern struct nsproxy init_nsproxy;
 

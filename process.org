@@ -17,6 +17,13 @@ All processes are descendants of the init process, whose PID is one。
 ** current
 ** init_task
 ** task list
+** init_nsproxy
+ - ~/kernel/nsproxy.c
+ - 初始的全局命名空间，By providing a default namespace that is associated 
+   with every process unless specified differently, the namespace-aware code
+   can always be used, but the results will be identical to a situation in
+   which all properties are global and not wrapped up in namespaces if no 
+   active support for namespaces is compiled in.
 
 * 参考
 

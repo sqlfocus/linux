@@ -6,6 +6,14 @@
 
 #include <asm/errno.h>
 
+/* 大部分情况下，linux的内核函数，成功调用后需要返回资源指针，失败后则需要
+   返回错误码；但c语言每个函数仅允许一个返回值，因此错误码也需要编码成指针。
+   
+   理论上，指针可以在地址空间内随意赋值，但linux支持的所有架构都预留了一段
+   地址空间，一般为0-4k，没有存储任何有意义的数据信息；因此，可以使用此地
+   址空间做为错误码编码(落到此空间的地址为错误码)
+
+   内核提供了一些列的宏简化此过程，PTR_ERR/IS_ERR()等 */
 /*
  * Kernel pointers have redundant information, so we can use a
  * scheme where we can return either an error code or a normal

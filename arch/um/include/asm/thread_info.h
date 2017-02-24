@@ -13,9 +13,9 @@
 #include <asm/segment.h>
 
 struct thread_info {
-	struct task_struct	*task;		/* main task structure */
-	unsigned long		flags;		/* low level flags */
-	__u32			cpu;		/* current CPU */
+	struct task_struct	*task;		/* 对应的进程，main task structure */
+	unsigned long		flags;		/* 如调度、信号等，low level flags */
+	__u32			cpu;		    /* 进程运行的cpu，current CPU */
 	int			preempt_count;  /* 0 => preemptable,
 						   <0 => BUG */
 	mm_segment_t		addr_limit;	/* thread address space:
