@@ -277,12 +277,13 @@ struct nf_bridge_info {
 };
 #endif
 
+/* 实现socket buff的wait queue */
 struct sk_buff_head {
 	/* These two members must be first. */
 	struct sk_buff	*next;
 	struct sk_buff	*prev;
 
-	__u32		qlen;
+	__u32		qlen;       /* 队列长度 */
 	spinlock_t	lock;
 };
 
@@ -496,6 +497,8 @@ enum {
 #define NET_SKBUFF_DATA_USES_OFFSET 1
 #endif
 
+/* 在64位系统上，unsigned int比unsigned char*省4个字节；此时此类型
+   的值不在表示具体内存虚拟地址，而是相对于struct sk_buff->head的偏移  */
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
 typedef unsigned int sk_buff_data_t;
 #else
@@ -629,7 +632,7 @@ static inline bool skb_mstamp_after(const struct skb_mstamp *t1,
  *	@truesize: Buffer size
  *	@users: User count - see {datagram,tcp}.c
  */
-
+/* 在网络实现的各层次之间传递信息，避免无谓的copy */
 struct sk_buff {
 	union {
 		struct {
@@ -638,14 +641,14 @@ struct sk_buff {
 			struct sk_buff		*prev;
 
 			union {
-				ktime_t		tstamp;
+				ktime_t		tstamp;            /* 报文到达时间 */
 				struct skb_mstamp skb_mstamp;
 			};
 		};
 		struct rb_node	rbnode; /* used in netem & tcp stack */
 	};
-	struct sock		*sk;
-	struct net_device	*dev;
+	struct sock		*sk;                       /* 对应的插口结构 */
+	struct net_device	*dev;                  /* 处理报文的设备 */
 
 	/*
 	 * This is the control buffer. It is free to use for every
@@ -759,7 +762,7 @@ struct sk_buff {
 		};
 	};
 	__u32			priority;
-	int			skb_iif;
+	int			skb_iif;                 /* 接收接口 */
 	__u32			hash;
 	__be16			vlan_proto;
 	__u16			vlan_tci;
@@ -797,8 +800,8 @@ struct sk_buff {
 	/* public: */
 
 	/* These elements must be at the end, see alloc_skb() for details.  */
-	sk_buff_data_t		tail;
-	sk_buff_data_t		end;
+	sk_buff_data_t		tail;   /* head/end指向网络数据所在内存区域的起始 */
+	sk_buff_data_t		end;    /* data/tail指向协议数据的起始，随着协议处理动态调整 */
 	unsigned char		*head,
 				*data;
 	unsigned int		truesize;

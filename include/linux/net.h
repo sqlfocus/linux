@@ -121,7 +121,7 @@ struct socket {
 
 	struct file		*file;             /* 指向对应的文件结构，file->private_data指向本结构 */
 	struct sock		*sk;               /* 特定于协议的插口信息结构 */
-	const struct proto_ops	*ops;      /* BSD插口层操作集合，如inet_stream_ops */
+	const struct proto_ops	*ops;      /* 特定于协议的BSD插口层操作集合，如inet_stream_ops */
 };
 
 struct vm_area_struct;

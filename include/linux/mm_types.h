@@ -105,7 +105,7 @@ struct page {
 			 * Usage count, *USE WRAPPER FUNCTION* when manual
 			 * accounting. See page_ref.h
 			 */
-			atomic_t _refcount;
+			atomic_t _refcount;            /* 引用计数 */
 		};
 	};
 

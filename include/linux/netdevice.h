@@ -1639,7 +1639,7 @@ enum netdev_priv_flags {
  */
 
 struct net_device {
-	char			name[IFNAMSIZ];
+	char			name[IFNAMSIZ];   /* 设备名 */
 	struct hlist_node	name_hlist;
 	char 			*ifalias;
 	/*
@@ -1686,7 +1686,7 @@ struct net_device {
 	netdev_features_t	mpls_features;
 	netdev_features_t	gso_partial_features;
 
-	int			ifindex;
+	int			ifindex;              /* 索引ID */
 	int			group;
 
 	struct net_device_stats	stats;
@@ -1726,7 +1726,7 @@ struct net_device {
 	unsigned char		dma;
 
 	unsigned int		mtu;
-	unsigned short		type;
+	unsigned short		type;              /* 硬件类型 */
 	unsigned short		hard_header_len;
 
 	unsigned short		needed_headroom;
@@ -1744,7 +1744,7 @@ struct net_device {
 	bool			uc_promisc;
 	struct netdev_hw_addr_list	uc;
 	struct netdev_hw_addr_list	mc;
-	struct netdev_hw_addr_list	dev_addrs;
+	struct netdev_hw_addr_list	dev_addrs; /* 硬件地址列表 */
 
 #ifdef CONFIG_SYSFS
 	struct kset		*queues_kset;
@@ -1858,7 +1858,7 @@ struct net_device {
 	struct netpoll_info __rcu	*npinfo;
 #endif
 
-	possible_net_t			nd_net;
+	possible_net_t			nd_net;    /* 此设备所属的网络空间 */
 
 	/* mid-layer private */
 	union {

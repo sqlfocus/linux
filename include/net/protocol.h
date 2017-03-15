@@ -34,15 +34,16 @@
 /* This is one larger than the largest protocol value that can be
  * found in an ipv4 or ipv6 header.  Since in both cases the protocol
  * value is presented in a __u8, this is defined to be 256.
- */
+ *//* 网络层数据包上送到传输层时，需要根据具体的协议完成；此结构代表
+ 具体的传输层注册协议 */
 #define MAX_INET_PROTOS		256
 
 /* This is used to register protocols. */
 struct net_protocol {
 	void			(*early_demux)(struct sk_buff *skb);
-	int			(*handler)(struct sk_buff *skb);
+	int			(*handler)(struct sk_buff *skb);        /* 传输层协议处理句柄 */
 	void			(*err_handler)(struct sk_buff *skb, u32 info);
-	unsigned int		no_policy:1,
+	unsigned int		no_policy:1,                    /* 向上层传递ICMP差错信息 */
 				netns_ok:1,
 				/* does the protocol do more stringent
 				 * icmp tag validation than simple

@@ -28,10 +28,12 @@
 #include <linux/spinlock.h>
 #include <net/protocol.h>
 
+/* 传输层协议处理入口数组 */
 const struct net_protocol __rcu *inet_protos[MAX_INET_PROTOS] __read_mostly;
 const struct net_offload __rcu *inet_offloads[MAX_INET_PROTOS] __read_mostly;
 EXPORT_SYMBOL(inet_offloads);
 
+/* 注册传输层入口协议的处理句柄 */
 int inet_add_protocol(const struct net_protocol *prot, unsigned char protocol)
 {
 	if (!prot->netns_ok) {

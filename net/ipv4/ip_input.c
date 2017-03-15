@@ -402,7 +402,7 @@ drop:
 
 /*
  * 	Main IP Receive routine.
- */
+ *//* 网络层报文处理入口 */
 int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 {
 	const struct iphdr *iph;

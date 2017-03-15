@@ -529,14 +529,13 @@ static const struct inode_operations sockfs_inode_ops = {
  *	and initialised. The socket is then returned. If we are out of inodes
  *	NULL is returned.
  */
-
 struct socket *sock_alloc(void)
 {
 	struct inode *inode;
 	struct socket *sock;
 
 	inode = new_inode_pseudo(sock_mnt->mnt_sb);
-	if (!inode)
+	if (!inode)             /* 分配struct socket_alloc，强制关联socket和inode */
 		return NULL;
 
 	sock = SOCKET_I(inode);
@@ -1669,7 +1668,7 @@ SYSCALL_DEFINE4(send, int, fd, void __user *, buff, size_t, len,
  *	sender. We verify the buffers are writable and if needed move the
  *	sender address from kernel to user space.
  */
-
+/* 基于插口的应用接收数据的系统调用，类似于read/recv/recvfrom */
 SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 		unsigned int, flags, struct sockaddr __user *, addr,
 		int __user *, addr_len)
@@ -2316,7 +2315,8 @@ static const unsigned char nargs[21] = {
  *  This function doesn't need to set the kernel lock because
  *  it is set by the callees.
  */
-
+/* 除掉读写等文件相关操作(通过关联inode实现)外，其他的无法与文件关联的
+   系统调用，如bind、listen等，linux提供统一的入口分发系统调用，sys_socketcall */
 SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
 {
 	unsigned long a[AUDITSC_ARGS];

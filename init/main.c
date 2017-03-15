@@ -476,6 +476,7 @@ static void __init mm_init(void)
 	ioremap_huge_init();
 }
 
+/* 内核启动, C语言环境初始化后的入口函数 */
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
@@ -502,15 +503,15 @@ asmlinkage __visible void __init start_kernel(void)
 	boot_cpu_init();
 	page_address_init();
 	pr_notice("%s", linux_banner);
-	setup_arch(&command_line);
+	setup_arch(&command_line);         /* 架构相关 */
 	mm_init_cpumask(&init_mm);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
-	setup_per_cpu_areas();
+	setup_per_cpu_areas();             /* 初始化静态定义的percpu资源 */
 	boot_cpu_state_init();
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 
-	build_all_zonelists(NULL, NULL);
+	build_all_zonelists(NULL, NULL);   /* 初始化节点及zone */
 	page_alloc_init();
 
 	pr_notice("Kernel command line: %s\n", boot_command_line);
@@ -534,7 +535,7 @@ asmlinkage __visible void __init start_kernel(void)
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
-	mm_init();
+	mm_init();                         /* 初始化内存 */
 
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
@@ -610,7 +611,7 @@ asmlinkage __visible void __init start_kernel(void)
 	page_ext_init();
 	debug_objects_mem_init();
 	kmemleak_init();
-	setup_per_cpu_pageset();
+	setup_per_cpu_pageset();           /* 初始化冷热缓存 */
 	numa_policy_init();
 	if (late_time_init)
 		late_time_init();

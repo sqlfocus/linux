@@ -1579,9 +1579,10 @@ static const struct net_protocol igmp_protocol = {
 };
 #endif
 
+/* 传输层协议TCP */
 static const struct net_protocol tcp_protocol = {
 	.early_demux	=	tcp_v4_early_demux,
-	.handler	=	tcp_v4_rcv,
+	.handler	=	tcp_v4_rcv,      /* TCP报文处理入口 */
 	.err_handler	=	tcp_v4_err,
 	.no_policy	=	1,
 	.netns_ok	=	1,

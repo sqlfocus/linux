@@ -390,7 +390,8 @@ static void ip_copy_addrs(struct iphdr *iph, const struct flowi4 *fl4)
 	       sizeof(fl4->saddr) + sizeof(fl4->daddr));
 }
 
-/* Note: skb->sk can be different from sk, in case of tunnels */
+/* Note: skb->sk can be different from sk, in case of tunnels
+   被传输层协议调用，在网络层发送数据 */
 int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 {
 	struct inet_sock *inet = inet_sk(sk);

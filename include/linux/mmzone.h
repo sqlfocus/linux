@@ -333,7 +333,7 @@ enum zone_type {
 	 */
 	ZONE_HIGHMEM,
 #endif
-	ZONE_MOVABLE,
+	ZONE_MOVABLE,             /* 致力于消除物理内存碎片 */
 #ifdef CONFIG_ZONE_DEVICE
 	ZONE_DEVICE,
 #endif
@@ -366,7 +366,7 @@ struct zone {
 	int node;
 #endif
 	struct pglist_data	*zone_pgdat;
-	struct per_cpu_pageset __percpu *pageset;
+	struct per_cpu_pageset __percpu *pageset;  /* 实现per-CPU hot-n-cold页链 */
 
 #ifndef CONFIG_SPARSEMEM
 	/*
@@ -377,7 +377,7 @@ struct zone {
 #endif /* CONFIG_SPARSEMEM */
 
 	/* zone_start_pfn == zone_start_paddr >> PAGE_SHIFT */
-	unsigned long		zone_start_pfn;
+	unsigned long		zone_start_pfn;        /* 本zone的第一个叶帧 */
 
 	/*
 	 * spanned_pages is the total pages spanned by the zone, including
@@ -446,7 +446,7 @@ struct zone {
 	ZONE_PADDING(_pad1_)
 
 	/* free areas of different sizes */
-	struct free_area	free_area[MAX_ORDER];
+	struct free_area	free_area[MAX_ORDER]; /* 实现buddy系统 */
 
 	/* zone flags, see below */
 	unsigned long		flags;
@@ -592,20 +592,20 @@ extern struct page *mem_map;
  *
  * Memory statistics and page replacement data structures are maintained on a
  * per-zone basis.
- */
+ *//* 代表numa节点的数据结构，位于内存管理的最上层 */
 struct bootmem_data;
 typedef struct pglist_data {
-	struct zone node_zones[MAX_NR_ZONES];
-	struct zonelist node_zonelists[MAX_ZONELISTS];
+	struct zone node_zones[MAX_NR_ZONES];  /* 本节点的zone */
+	struct zonelist node_zonelists[MAX_ZONELISTS];  /* 内存不足时，可用求救的节点列表 */
 	int nr_zones;
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */
-	struct page *node_mem_map;
+	struct page *node_mem_map;             /* 物理页描述结构数组 */
 #ifdef CONFIG_PAGE_EXTENSION
 	struct page_ext *node_page_ext;
 #endif
 #endif
 #ifndef CONFIG_NO_BOOTMEM
-	struct bootmem_data *bdata;
+	struct bootmem_data *bdata;            /* 启动时，内存初始化完毕之前，利用此结构描述可用内存 */
 #endif
 #ifdef CONFIG_MEMORY_HOTPLUG
 	/*
@@ -620,15 +620,15 @@ typedef struct pglist_data {
 	 */
 	spinlock_t node_size_lock;
 #endif
-	unsigned long node_start_pfn;
+	unsigned long node_start_pfn;     /* 本节点叶帧起始序号 */
 	unsigned long node_present_pages; /* total number of physical pages */
 	unsigned long node_spanned_pages; /* total size of physical page
 					     range, including holes */
-	int node_id;
-	wait_queue_head_t kswapd_wait;
+	int node_id;                      /* 节点ID，从0开始 */
+	wait_queue_head_t kswapd_wait;    /* swap deamon换页时所需的队列， */
 	wait_queue_head_t pfmemalloc_wait;
-	struct task_struct *kswapd;	/* Protected by
-					   mem_hotplug_begin/end() */
+	struct task_struct *kswapd;	      /* 负责此节点的swap deamon，Protected by
+					                     mem_hotplug_begin/end() */
 	int kswapd_order;
 	enum zone_type kswapd_classzone_idx;
 

@@ -253,7 +253,7 @@ compound_page_dtor * const compound_page_dtors[] = {
 #endif
 };
 
-int min_free_kbytes = 1024;
+int min_free_kbytes = 1024;      /* 需保留的最小内存，用于critical allocation；此值由现有内存计算得到 */
 int user_min_free_kbytes = -1;
 int watermark_scale_factor = 10;
 
@@ -6700,7 +6700,7 @@ void setup_per_zone_wmarks(void)
  * 4096MB:	8192k
  * 8192MB:	11584k
  * 16384MB:	16384k
- */
+ *//* 确定内存水线 */
 int __meminit init_per_zone_wmark_min(void)
 {
 	unsigned long lowmem_kbytes;
