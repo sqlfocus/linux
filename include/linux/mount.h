@@ -63,9 +63,10 @@ struct mnt_namespace;
 #define MNT_MARKED		0x4000000
 #define MNT_UMOUNT		0x8000000
 
+/* 每一个挂载的文件系统对应一个此数据结构 */
 struct vfsmount {
 	struct dentry *mnt_root;	/* root of the mounted tree */
-	struct super_block *mnt_sb;	/* pointer to superblock */
+	struct super_block *mnt_sb;	/* 对应挂载的文件系统信息实例，pointer to superblock */
 	int mnt_flags;
 };
 

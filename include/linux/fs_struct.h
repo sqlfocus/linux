@@ -5,13 +5,14 @@
 #include <linux/spinlock.h>
 #include <linux/seqlock.h>
 
+/* 进程中文件系统相关信息 */
 struct fs_struct {
-	int users;
-	spinlock_t lock;
-	seqcount_t seq;
-	int umask;
-	int in_exec;
-	struct path root, pwd;
+	int users;        /**/
+	spinlock_t lock;  /**/
+	seqcount_t seq;   /**/
+	int umask;        /* 设置新创建文件的mask，可通过umask()修改 */
+	int in_exec;      /**/
+	struct path root, pwd;   /* 进程根、当前路径 */
 };
 
 extern struct kmem_cache *fs_cachep;

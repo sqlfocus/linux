@@ -22,11 +22,11 @@
 #define NR_OPEN_DEFAULT BITS_PER_LONG
 
 struct fdtable {
-	unsigned int max_fds;
-	struct file __rcu **fd;      /* current fd array */
-	unsigned long *close_on_exec;
-	unsigned long *open_fds;
-	unsigned long *full_fds_bits;
+	unsigned int max_fds;         /* 当前进程允许打开的最大文件数 */
+	struct file __rcu **fd;       /* struct files_struct->fd_array */
+	unsigned long *close_on_exec; /* bitmap, struct files_struct->close_on_exec_init */
+	unsigned long *open_fds;      /* bitmap */
+	unsigned long *full_fds_bits; /* bitmap */
 	struct rcu_head rcu;
 };
 
@@ -42,7 +42,7 @@ static inline bool fd_is_open(unsigned int fd, const struct fdtable *fdt)
 
 /*
  * Open file table structure
- */
+ *//* 进程关联用户态的fd和内核文件描述结构 */
 struct files_struct {
   /*
    * read mostly part
@@ -52,16 +52,17 @@ struct files_struct {
 	wait_queue_head_t resize_wait;
 
 	struct fdtable __rcu *fdt;
-	struct fdtable fdtab;
+	struct fdtable fdtab;           /* 重要数据结构，维护进程的文件描述符句柄 */
   /*
    * written part on a separate cache line in SMP
    */
 	spinlock_t file_lock ____cacheline_aligned_in_smp;
-	unsigned int next_fd;
-	unsigned long close_on_exec_init[1];
-	unsigned long open_fds_init[1];
+	unsigned int next_fd;                  /* 新打开文件的句柄 */
+	unsigned long close_on_exec_init[1];   /* bitmap，执行exec()族时需要关闭的文件句柄 */
+	unsigned long open_fds_init[1];        /* */
 	unsigned long full_fds_bits_init[1];
 	struct file __rcu * fd_array[NR_OPEN_DEFAULT];
+                                           /* 描述进程打开的文件，索引为fd句柄 */
 };
 
 struct file_operations;

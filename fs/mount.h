@@ -5,9 +5,9 @@
 #include <linux/fs_pin.h>
 
 struct mnt_namespace {
-	atomic_t		count;
-	struct ns_common	ns;
-	struct mount *	root;
+	atomic_t		count;             /* 使用进程计数 */
+	struct ns_common	ns;            /* */
+	struct mount *	root;              /* 指向根挂载系统 */
 	struct list_head	list;
 	struct user_namespace	*user_ns;
 	struct ucounts		*ucounts;

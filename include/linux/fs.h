@@ -599,20 +599,21 @@ is_uncached_acl(struct posix_acl *acl)
  * Keep mostly read-only and often accessed (especially for
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
- */
+ *//* 此结构描述磁盘文件，包括元数据和内容；当然也包含一些动态内容，这些
+      内容不存储在磁盘，被内核动态创建 */
 struct inode {
-	umode_t			i_mode;
-	unsigned short		i_opflags;
-	kuid_t			i_uid;
-	kgid_t			i_gid;
-	unsigned int		i_flags;
+	umode_t			i_mode;            /* 文件类型及访问权限 */
+	unsigned short		i_opflags;     /**/
+	kuid_t			i_uid;             /* 文件UID */
+	kgid_t			i_gid;             /* 文件GID */
+	unsigned int		i_flags;       /**/
 
 #ifdef CONFIG_FS_POSIX_ACL
 	struct posix_acl	*i_acl;
 	struct posix_acl	*i_default_acl;
 #endif
 
-	const struct inode_operations	*i_op;
+	const struct inode_operations	*i_op;   /* inode节点操作集 */
 	struct super_block	*i_sb;
 	struct address_space	*i_mapping;
 
@@ -621,7 +622,7 @@ struct inode {
 #endif
 
 	/* Stat data, not accessed from path walking */
-	unsigned long		i_ino;
+	unsigned long		i_ino;        /* inode号 */
 	/*
 	 * Filesystems may only read i_nlink directly.  They shall use the
 	 * following functions for modification:
@@ -633,15 +634,15 @@ struct inode {
 		const unsigned int i_nlink;
 		unsigned int __i_nlink;
 	};
-	dev_t			i_rdev;
-	loff_t			i_size;
-	struct timespec		i_atime;
-	struct timespec		i_mtime;
-	struct timespec		i_ctime;
+	dev_t			i_rdev;           /* 用于设备文件，标识通信的设备 */
+	loff_t			i_size;           /* 文件大小 */
+	struct timespec		i_atime;      /* 上次文件访问时间 */
+	struct timespec		i_mtime;      /* 上次文件修改时间 */
+	struct timespec		i_ctime;      /* 上次inode修改时间 */
 	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
 	unsigned short          i_bytes;
 	unsigned int		i_blkbits;
-	blkcnt_t		i_blocks;
+	blkcnt_t		i_blocks;         /* 以块儿为单位，文件大小 */
 
 #ifdef __NEED_I_SIZE_ORDERED
 	seqcount_t		i_size_seqcount;
@@ -672,22 +673,22 @@ struct inode {
 		struct rcu_head		i_rcu;
 	};
 	u64			i_version;
-	atomic_t		i_count;
+	atomic_t		i_count;          /* 使用计数，访问此结构的进程数 */
 	atomic_t		i_dio_count;
 	atomic_t		i_writecount;
 #ifdef CONFIG_IMA
 	atomic_t		i_readcount; /* struct files open RO */
 #endif
-	const struct file_operations	*i_fop;	/* former ->i_op->default_file_ops */
+	const struct file_operations	*i_fop;	/* 文件操作集，former ->i_op->default_file_ops */
 	struct file_lock_context	*i_flctx;
 	struct address_space	i_data;
-	struct list_head	i_devices;
+	struct list_head	i_devices;          /* 允许单个设备多个inode */
 	union {
-		struct pipe_inode_info	*i_pipe;
-		struct block_device	*i_bdev;
-		struct cdev		*i_cdev;
-		char			*i_link;
-		unsigned		i_dir_seq;
+		struct pipe_inode_info	*i_pipe;    /* 管道 */
+		struct block_device	*i_bdev;        /* 块设备 */
+		struct cdev		*i_cdev;            /* 字符设备 */
+		char			*i_link;            /**/
+		unsigned		i_dir_seq;          /**/
 	};
 
 	__u32			i_generation;
@@ -876,14 +877,15 @@ static inline int ra_has_index(struct file_ra_state *ra, pgoff_t index)
 		index <  ra->start + ra->size);
 }
 
+/* 与用户态的fd对应，保存对应的内核信息 */
 struct file {
 	union {
 		struct llist_node	fu_llist;
 		struct rcu_head 	fu_rcuhead;
 	} f_u;
-	struct path		f_path;
+	struct path		f_path;          /* inode和文件系统信息 */
 	struct inode		*f_inode;	/* cached value */
-	const struct file_operations	*f_op;
+	const struct file_operations	*f_op;   /* 文件操作集 */
 
 	/*
 	 * Protects f_ep_links, f_flags.
@@ -891,15 +893,15 @@ struct file {
 	 */
 	spinlock_t		f_lock;
 	atomic_long_t		f_count;
-	unsigned int 		f_flags;
-	fmode_t			f_mode;
+	unsigned int 		f_flags;     /* 打开文件时，传入的特定标识 */
+	fmode_t			f_mode;          /* 打开文件时，指定的mode */
 	struct mutex		f_pos_lock;
-	loff_t			f_pos;
-	struct fown_struct	f_owner;
-	const struct cred	*f_cred;
-	struct file_ra_state	f_ra;
+	loff_t			f_pos;           /* 当前读取偏移 */
+	struct fown_struct	f_owner;     /* 进程相关信息 */
+	const struct cred	*f_cred;     /* */
+	struct file_ra_state	f_ra;    /* 预取信息 */
 
-	u64			f_version;
+	u64			f_version;           /* 校验struct file实例是否与inode相匹配 */
 #ifdef CONFIG_SECURITY
 	void			*f_security;
 #endif
@@ -911,7 +913,7 @@ struct file {
 	struct list_head	f_ep_links;         /* 被struct epitem->fllink填充，激活的待监控对象列表 */
 	struct list_head	f_tfile_llink;
 #endif /* #ifdef CONFIG_EPOLL */
-	struct address_space	*f_mapping;
+	struct address_space	*f_mapping;     /* 指定映射的地址空间 */
 } __attribute__((aligned(4)));	/* lest something weird decides that 2 is OK */
 
 struct file_handle {
@@ -1336,11 +1338,11 @@ struct sb_writers {
 
 struct super_block {
 	struct list_head	s_list;		/* Keep this first */
-	dev_t			s_dev;		/* search index; _not_ kdev_t */
+	dev_t			s_dev;                /* 对应的底层设备号，search index; _not_ kdev_t */
 	unsigned char		s_blocksize_bits;
-	unsigned long		s_blocksize;
-	loff_t			s_maxbytes;	/* Max file size */
-	struct file_system_type	*s_type;
+	unsigned long		s_blocksize;      /* 块儿大小 */
+	loff_t			s_maxbytes;	          /* 支持的最大文件大小 */
+	struct file_system_type	*s_type;      /* 指向注册的文件系统类型，总体信息 */
 	const struct super_operations	*s_op;
 	const struct dquot_operations	*dq_op;
 	const struct quotactl_ops	*s_qcop;
@@ -1348,7 +1350,7 @@ struct super_block {
 	unsigned long		s_flags;
 	unsigned long		s_iflags;	/* internal SB_I_* flags */
 	unsigned long		s_magic;
-	struct dentry		*s_root;
+	struct dentry		*s_root;          /* 超级块儿对应的dentry，相对于挂载点的路径 */
 	struct rw_semaphore	s_umount;
 	int			s_count;
 	atomic_t		s_active;
@@ -1361,7 +1363,7 @@ struct super_block {
 
 	struct hlist_bl_head	s_anon;		/* anonymous dentries for (nfs) exporting */
 	struct list_head	s_mounts;	/* list of mounts; _not_ for fs use */
-	struct block_device	*s_bdev;
+	struct block_device	*s_bdev;          /* 对应的底层设备，包括操控句柄等 */
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;
 	struct hlist_node	s_instances;
@@ -1379,7 +1381,7 @@ struct super_block {
 
 	/* Granularity of c/m/atime in ns.
 	   Cannot be worse than a second */
-	u32		   s_time_gran;
+	u32		   s_time_gran;             /* 时间戳的变更粒度，单位ns */
 
 	/*
 	 * The next field is for VFS *only*. No filesystems have any business
@@ -1693,7 +1695,7 @@ struct block_device_operations;
 struct iov_iter;
 
 struct file_operations {
-	struct module *owner;
+	struct module *owner;               /* 文件系统做为模块儿载入时才被赋值 */
 	loff_t (*llseek) (struct file *, loff_t, int);
 	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
 	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
@@ -2025,8 +2027,9 @@ static inline void file_accessed(struct file *file)
 int sync_inode(struct inode *inode, struct writeback_control *wbc);
 int sync_inode_metadata(struct inode *inode, int wait);
 
+/* 描述文件系统 */
 struct file_system_type {
-	const char *name;
+	const char *name;                 /* 文件系统名 */
 	int fs_flags;
 #define FS_REQUIRES_DEV		1 
 #define FS_BINARY_MOUNTDATA	2
@@ -2038,7 +2041,7 @@ struct file_system_type {
 	void (*kill_sb) (struct super_block *);
 	struct module *owner;
 	struct file_system_type * next;
-	struct hlist_head fs_supers;
+	struct hlist_head fs_supers;        /* 连接挂载的所有此类型的文件系统实例 */
 
 	struct lock_class_key s_lock_key;
 	struct lock_class_key s_umount_key;

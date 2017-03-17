@@ -80,16 +80,16 @@ extern struct dentry_stat_t dentry_stat;
 
 #define d_lock	d_lockref.lock
 
+/* 描述文件名或目录的数据结构；cache文件名和inode之间的关联，以便加速 */
 struct dentry {
 	/* RCU lookup touched fields */
-	unsigned int d_flags;		/* protected by d_lock */
+	unsigned int d_flags;           /* 标志 */
 	seqcount_t d_seq;		/* per dentry seqlock */
 	struct hlist_bl_node d_hash;	/* lookup hash list */
-	struct dentry *d_parent;	/* parent directory */
-	struct qstr d_name;
-	struct inode *d_inode;		/* Where the name belongs to - NULL is
-					 * negative */
-	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
+	struct dentry *d_parent;	    /* 父目录 */
+	struct qstr d_name;                         /* 文件名，如果短则放在d_iname，以加速 */
+	struct inode *d_inode;		                /* 对应的inode节点 */
+	unsigned char d_iname[DNAME_INLINE_LEN];	/* 文件名 */
 
 	/* Ref lookup also touches following */
 	struct lockref d_lockref;	/* per-dentry lock and refcount */

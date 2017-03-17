@@ -5,8 +5,8 @@ struct dentry;
 struct vfsmount;
 
 struct path {
-	struct vfsmount *mnt;
-	struct dentry *dentry;
+	struct vfsmount *mnt;    /* 挂载的文件系统 */
+	struct dentry *dentry;   /* 文件名和inode的关联 */
 };
 
 extern void path_get(const struct path *);
