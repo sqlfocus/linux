@@ -664,7 +664,7 @@ static unsigned long randomize_stack_top(unsigned long stack_top)
 	return PAGE_ALIGN(stack_top) - random_variable;
 #endif
 }
-
+/* ELF格式二进制可执行文件加载入口 */
 static int load_elf_binary(struct linux_binprm *bprm)
 {
 	struct file *interpreter = NULL; /* to shut gcc up */
@@ -707,7 +707,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		goto out;
 	if (!bprm->file->f_op->mmap)
 		goto out;
-
+    /* 加载program header */
 	elf_phdata = load_elf_phdrs(&loc->elf_ex, bprm->file);
 	if (!elf_phdata)
 		goto out;
@@ -720,7 +720,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	end_code = 0;
 	start_data = 0;
 	end_data = 0;
-
+    /* 加载动态链接器ld的elf文件头 */
 	for (i = 0; i < loc->elf_ex.e_phnum; i++) {
 		if (elf_ppnt->p_type == PT_INTERP) {
 			/* This is the program interpreter used for
@@ -777,7 +777,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		}
 		elf_ppnt++;
 	}
-
+    /* 特定属性段 */
 	elf_ppnt = elf_phdata;
 	for (i = 0; i < loc->elf_ex.e_phnum; i++, elf_ppnt++)
 		switch (elf_ppnt->p_type) {
@@ -865,7 +865,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	current->mm->start_stack = bprm->p;
 
 	/* Now we do a little grungy work by mmapping the ELF image into
-	   the correct location in memory. */
+	   the correct location in memory. *//* 加载段到内存 */
 	for(i = 0, elf_ppnt = elf_phdata;
 	    i < loc->elf_ex.e_phnum; i++, elf_ppnt++) {
 		int elf_prot = 0, elf_flags;
@@ -1086,7 +1086,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	 */
 	ELF_PLAT_INIT(regs, reloc_func_desc);
 #endif
-
+    /* 启动进程 */
 	start_thread(regs, elf_entry, bprm->p);
 	retval = 0;
 out:
