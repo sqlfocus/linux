@@ -19,14 +19,14 @@
  *	Try and keep these values and structures similar to BSD, especially
  *	the BPF code definitions which need to match so you can share filters
  */
- 
-struct sock_filter {	/* Filter block */
+/* 类似于BPF的linux socket filter经典版本，CBPF */ 
+struct sock_filter {
 	__u16	code;   /* Actual filter code */
 	__u8	jt;	/* Jump true */
 	__u8	jf;	/* Jump false */
 	__u32	k;      /* Generic multiuse field */
 };
-
+/* 被setsockopt(,,SO_ATTACH_FILTER,,)所用，传递多个struct sock_filter结构 */
 struct sock_fprog {	/* Required for SO_ATTACH_FILTER. */
 	unsigned short		len;	/* Number of filter blocks */
 	struct sock_filter __user *filter;

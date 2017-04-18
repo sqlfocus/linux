@@ -876,7 +876,7 @@ set_rcvbuf:
 		ret = sock_set_timeout(&sk->sk_sndtimeo, optval, optlen);
 		break;
 
-	case SO_ATTACH_FILTER:
+	case SO_ATTACH_FILTER:   /* 老式的BPF，CBPF，插入点 */
 		ret = -EINVAL;
 		if (optlen == sizeof(struct sock_fprog)) {
 			struct sock_fprog fprog;
@@ -932,7 +932,7 @@ set_rcvbuf:
 		ret = sk_detach_filter(sk);
 		break;
 
-	case SO_LOCK_FILTER:
+	case SO_LOCK_FILTER:          /* 锁定BPF过滤器，不允许变更 */
 		if (sock_flag(sk, SOCK_FILTER_LOCKED) && !valbool)
 			ret = -EPERM;
 		else

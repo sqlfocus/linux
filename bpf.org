@@ -1,0 +1,157 @@
+#+TITLE: BPF摘录
+#+AUTHOR: sqlfocus
+
+
+本文档摘录linux的BPF实现，了解其原理及实现；在此基础上，了解基于BPF
+的过滤技术、动态调试技术。
+
+* 简介
+ - BPF  :: Berkeley Packet Filter
+ - LSF  :: Linux Socket Filtering
+
+BPF允许用户态程序在任何socket上添加过滤器，以允许或阻断此插口上特定类型
+的数据报文；LSF和BPF几乎不二，仅仅是linux发行版上的实现。
+
+* 使用步骤
+ - 创建过滤代码
+ - 通过SO_ATTACH_FILTER选项传入内核
+ - 内核检测代码安全性，开始工作
+ - 通过SO_DETACH_FILTER选项撤销过滤器
+ - 可通过SO_LOCK_FILTER选项锁定过滤器，防止被移除和修改
+
+* CBPF
+沿袭UNIX BPF的指令格式，单条指令固定长度64bits，如下：
+ #+BEGIN_EXAMPLE
+ struct sock_filter {	/* Filter block */
+   __u16  code; /* 指令类型及寻址模型 */
+   __u8	  jt;	/* true跳转偏移，相对于下一条指令 */
+   __u8	  jf;	/* false跳转偏移 */
+   __u32  k;    /* 通用字段，根据code具有不同含义 */
+ };
+ #+END_EXAMPLE
+
+** 设计原则
+ - must be protocol independent
+    : 内核不需要修改以支持新协议，packet以byte字符数组呈现
+    : 协议相关逻辑固化到过滤器代码
+ - must be general
+    : 设计成普世模型，提供丰富的指令集，以备未来拓展
+ - Packet data references should be minimized
+    : 固定的报文字段多次使用时，可加载到寄存器，以减少copy操作
+ - Decoding an instruction should consist of a single switch statement
+    : 指令内尽量少包含跳转分支数，以提升代码效率
+ - abstract machine registers should reside in physical registers
+    : 为提升代码性能的考虑
+
+** 指令类型
+支持的指令包括load/store/branch/alu/miscellaneous/return等；具体参考
+ - ~/include/uapi/linux/bpf_common.h
+ - ~/include/uapi/linux/filter.h
+
+** 编译器
+内核携带了编译器bpf_asm，~/tools/net/，以抽象指令格式为好理解的汇编语言。
+另外编译结果还有bpf_dbg，用于调试汇编代码，具体参考filter.txt。
+ #+BEGIN_EXAMPLE
+ 编译、生成bpf_asm
+ $ cd ~/tools/net
+ $ sudo apt-get install binutils-dev          引入bfd.h
+ $ sudo apt-get install libreadline-dev       引入readline.h
+ $ sudo apt-get install bison                 引入bison + flex
+ $ sudo apt-get install flex
+ $ make
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 编译示例BPF汇编
+ $ emacs -nw arp.check
+     ldh [12]
+     jne #0x806, drop
+     ret #-1
+     drop: ret #0
+
+ $ ./bpf_asm arp.check                生成可直接加载的代码
+ $ ./bpf_asm -c arp.check             生成c风格的代码
+ #+END_EXAMPLE
+
+* EBPF
+不同于CBPF，EBPF是针对linux体系优化后的指令集；即便是CBPF，到linux体系执
+行时，在内部也需要先转换为EBPF。
+
+write programs in "restricted C" and compile into eBPF with a optional
+GCC/LLVM backend, so that it can just-in-time map to modern 64-bit CPUs 
+with minimal performance overhead over two steps, that is, C -> eBPF -> native code.
+这是eBPF的设计目标。
+
+ #+BEGIN_EXAMPLE
+ struct bpf_insn {
+   __u8 code;	   /* 4bits(操作码)/1bit(源)/3bits(指令类型) */
+   __u8 dst_reg:4; /* dest register */
+   __u8	src_reg:4; /* source register */
+   __s16 off;	   /* signed offset */
+   __s32 imm;	   /* signed immediate constant */
+ };
+ #+END_EXAMPLE
+
+
+** 对比CBPF
+ - 寄存器从2增加到10个
+    : A/X + 隐藏的frame指针 ==> R0~R9 + 只读frame指针(R10)
+    : R0     存放内核函数的返回值，和eBPF的返回值
+    : R1-R5  eBPF向内核函数传递参数
+    : R6~R9  被调用内核函数的callee saved register
+    : R10    只读frame指针，访问堆栈
+    :
+    : X86_64平台寄存器对应关系
+    :     R0 - rax
+    :     R1 - rdi
+    :     R2 - rsi
+    :     R3 - rdx
+    :     R4 - rcx
+    :     R5 - r8
+    :     R6 - rbx
+    :     R7 - r13
+    :     R8 - r14
+    :     R9 - r15
+    :     R10- rbp
+ - 寄存器宽度由32bit增加到64bit
+ - 替换jt/jf为jt/fall-through，减少跳转指令数
+ - 引入bpf_call指令，采用硬件相同的寄存器传递惯例，避免额外参数copy开销
+
+** 指令类型
+类似于CBPF，支持丰富的指令类型，包括load/store/jmp/alu/alu64等；具体参考
+ - include/uapi/linux/bpf.h
+
+** map
+映射内存用于eBPF，做为内核程序和用户态程序共享通信的通用存储；此映射区域
+由用户态通过bpf()系统调用操控。
+ - bpf(BPF_MAP_CREATE,,)            :: 创建map
+    : 类型包括hash/array/bloom filter/radix-tree等
+ - bpf(BPF_MAP_LOOKUP_ELEM,,)       :: 查找key
+ - bpf(BPF_MAP_UPDATE_ELEM,,)       :: 创建和更新key/value
+ - bpf(BPF_MAP_DELETE_ELEM,,)       :: 删除key
+ - close()                          :: 删除map
+
+** 限制
+ - 指令数限制4096
+ - 只能同时存在一个ebpf程序
+ - eBPF程序第一个参数ctx(R1)是固定的
+    : seccomp  -->   seccomp_data
+    : BPF      -->   skb
+
+* xt_bpf
+netfilter
+
+* cls_bpf
+qdisc layer
+
+* 参考
+ - BSD报文过滤器的设计文档，bpf-usenix93.pdf
+ - LSF文档，~/Documentation/networking/filter.txt
+ - CBPF编译器工具，~/tools/net/
+ - ~/kernel/bpf/
+ - ~/samples/bpf/
+ - ~/tools/lib/bpf/
+
+
+
+
