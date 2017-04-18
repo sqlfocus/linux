@@ -1635,7 +1635,7 @@ static int exec_binprm(struct linux_binprm *bprm)
 
 /*
  * sys_execve() executes a new program.
- */
+ *//* 可执行文件启动入口 */
 static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
@@ -1867,6 +1867,7 @@ void set_dumpable(struct mm_struct *mm, int value)
 	} while (cmpxchg(&mm->flags, old, new) != old);
 }
 
+/* exec()家族系统调用的入口地址 */
 SYSCALL_DEFINE3(execve,
 		const char __user *, filename,
 		const char __user *const __user *, argv,

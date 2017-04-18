@@ -1,0 +1,38 @@
+#+TITLE: elf文件加载流程
+#+AUTHOR: sqlfocus
+
+
+本文档摘录ELF文件的格式，及加载流程，以期对linux进程管理的理解更加深
+入；也为动态修正程序、理解病毒原理服务。
+
+* 内核流程
+ #+BEGIN_EXAMPLE
+ -sys_execve()                           ~/fs/exec.c
+   -do_execve()
+     -do_execveat_common()               ~/fs/exec.c
+       -do_open_execat()                 打开可执行二进制文件
+       -exec_binprm()
+         -search_binary_handler()
+           -load_elf_binary()            ~/fs/binfmt_elf.c
+             -load_elf_phdrs()
+             -kernel_read()              读取动态连接器ld的elf文件头
+             -elf_map()                  加载PT_LOAD段到内存
+             -load_elf_interp()
+             -start_thread()             启动进程, ~/arch/x86/kernel/process_64.c
+               -start_thread_common()
+ #+END_EXAMPLE
+
+* 参考
+ - https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
+ - 书籍：SYSTEM V APPLICATION BINARY INTERFACE.pdf
+ - 书籍：tool interface standard - elf specification.pdf
+ - http://blog.csdn.net/zhenshi/article/details/15604
+ - http://blog.csdn.net/hhhbbb/article/details/6855004
+ - http://blog.csdn.net/xuchao1229/article/details/8915831
+
+
+
+
+
+
+
