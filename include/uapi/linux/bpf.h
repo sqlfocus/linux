@@ -10,9 +10,10 @@
 #include <linux/types.h>
 #include <linux/bpf_common.h>
 
-/* Extended instruction set based on top of classic BPF */
+/* Extended instruction set based on top of classic BPF; 此文件定义ebpf指令，
+   由cBPF的指令定义拓展而来，cBPF的定义见~/include/uapi/linux/bpf_common.h */
 
-/* instruction classes */
+/* instruction classes; 覆盖了cBPF的BPF_MISC类型；并弃用了BPF_RET类型 */
 #define BPF_ALU64	0x07	/* alu mode in double word width */
 
 /* ld/ldx fields */
@@ -55,6 +56,21 @@ enum {
 /* BPF has 10 general purpose 64-bit registers and stack frame. */
 #define MAX_BPF_REG	__MAX_BPF_REG
 
+/*
+ebpf arithmetic、jump指令： bpf_insn->code格式
+  +----------------+--------+--------------------+
+  |   4 bits       |  1 bit |   3 bits           |
+  | operation code | source | instruction class  |
+  +----------------+--------+--------------------+
+  (MSB)                                      (LSB)
+
+ebpf load、store指令：bpf_insn->code格式
+  +--------+--------+-------------------+
+  | 3 bits | 2 bits |   3 bits          |
+  |  mode  |  size  | instruction class |
+  +--------+--------+-------------------+
+  (MSB)                             (LSB)
+*/
 struct bpf_insn {
 	__u8	code;		/* opcode */
 	__u8	dst_reg:4;	/* dest register */

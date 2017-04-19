@@ -30,7 +30,8 @@ struct bpf_prog_aux;
 /* ArgX, context and stack frame pointer register positions. Note,
  * Arg1, Arg2, Arg3, etc are used as argument mappings of function
  * calls in BPF_CALL instruction.
- */
+ *//* 定义ebpf的寄存器惯例；R1-R5参数，R0返回值，R6对应定制场景的数据结构，
+      R10只读frame指针(访问堆栈) */
 #define BPF_REG_ARG1	BPF_REG_1
 #define BPF_REG_ARG2	BPF_REG_2
 #define BPF_REG_ARG3	BPF_REG_3
@@ -39,7 +40,7 @@ struct bpf_prog_aux;
 #define BPF_REG_CTX	BPF_REG_6
 #define BPF_REG_FP	BPF_REG_10
 
-/* Additional register mappings for converted user programs. */
+/* 兼容cbpf的寄存器；Additional register mappings for converted user programs. */
 #define BPF_REG_A	BPF_REG_0
 #define BPF_REG_X	BPF_REG_7
 #define BPF_REG_TMP	BPF_REG_8
@@ -56,10 +57,12 @@ struct bpf_prog_aux;
 /* BPF program can access up to 512 bytes of stack space. */
 #define MAX_BPF_STACK	512
 
+
+/******************************************************************/
 /* Helper macros for filter block array initializers. */
+/*** 丰富的帮助宏，用于构建ebpf指令 ***/
 
 /* ALU ops on registers, bpf_add|sub|...: dst_reg += src_reg */
-
 #define BPF_ALU64_REG(OP, DST, SRC)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_OP(OP) | BPF_X,	\
@@ -77,7 +80,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* ALU ops on immediates, bpf_add|sub|...: dst_reg += imm32 */
-
 #define BPF_ALU64_IMM(OP, DST, IMM)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_OP(OP) | BPF_K,	\
@@ -95,7 +97,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Endianess conversion, cpu_to_{l,b}e(), {l,b}e_to_cpu() */
-
 #define BPF_ENDIAN(TYPE, DST, LEN)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU | BPF_END | BPF_SRC(TYPE),	\
@@ -105,7 +106,6 @@ struct bpf_prog_aux;
 		.imm   = LEN })
 
 /* Short form of mov, dst_reg = src_reg */
-
 #define BPF_MOV64_REG(DST, SRC)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_MOV | BPF_X,		\
@@ -123,7 +123,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Short form of mov, dst_reg = imm32 */
-
 #define BPF_MOV64_IMM(DST, IMM)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_MOV | BPF_K,		\
@@ -163,7 +162,6 @@ struct bpf_prog_aux;
 	BPF_LD_IMM64_RAW(DST, BPF_PSEUDO_MAP_FD, MAP_FD)
 
 /* Short form of mov based on type, BPF_X: dst_reg = src_reg, BPF_K: dst_reg = imm32 */
-
 #define BPF_MOV64_RAW(TYPE, DST, SRC, IMM)			\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_MOV | BPF_SRC(TYPE),	\
@@ -181,7 +179,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Direct packet access, R0 = *(uint *) (skb->data + imm32) */
-
 #define BPF_LD_ABS(SIZE, IMM)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_LD | BPF_SIZE(SIZE) | BPF_ABS,	\
@@ -191,7 +188,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Indirect packet access, R0 = *(uint *) (skb->data + src_reg + imm32) */
-
 #define BPF_LD_IND(SIZE, SRC, IMM)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_LD | BPF_SIZE(SIZE) | BPF_IND,	\
@@ -201,7 +197,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Memory load, dst_reg = *(uint *) (src_reg + off16) */
-
 #define BPF_LDX_MEM(SIZE, DST, SRC, OFF)			\
 	((struct bpf_insn) {					\
 		.code  = BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM,	\
@@ -211,7 +206,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Memory store, *(uint *) (dst_reg + off16) = src_reg */
-
 #define BPF_STX_MEM(SIZE, DST, SRC, OFF)			\
 	((struct bpf_insn) {					\
 		.code  = BPF_STX | BPF_SIZE(SIZE) | BPF_MEM,	\
@@ -221,7 +215,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Atomic memory add, *(uint *)(dst_reg + off16) += src_reg */
-
 #define BPF_STX_XADD(SIZE, DST, SRC, OFF)			\
 	((struct bpf_insn) {					\
 		.code  = BPF_STX | BPF_SIZE(SIZE) | BPF_XADD,	\
@@ -231,7 +224,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Memory store, *(uint *) (dst_reg + off16) = imm32 */
-
 #define BPF_ST_MEM(SIZE, DST, OFF, IMM)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_ST | BPF_SIZE(SIZE) | BPF_MEM,	\
@@ -241,7 +233,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Conditional jumps against registers, if (dst_reg 'op' src_reg) goto pc + off16 */
-
 #define BPF_JMP_REG(OP, DST, SRC, OFF)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_JMP | BPF_OP(OP) | BPF_X,		\
@@ -251,7 +242,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Conditional jumps against immediates, if (dst_reg 'op' imm32) goto pc + off16 */
-
 #define BPF_JMP_IMM(OP, DST, IMM, OFF)				\
 	((struct bpf_insn) {					\
 		.code  = BPF_JMP | BPF_OP(OP) | BPF_K,		\
@@ -261,7 +251,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Function call */
-
 #define BPF_EMIT_CALL(FUNC)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_JMP | BPF_CALL,			\
@@ -271,7 +260,6 @@ struct bpf_prog_aux;
 		.imm   = ((FUNC) - __bpf_call_base) })
 
 /* Raw code statement block */
-
 #define BPF_RAW_INSN(CODE, DST, SRC, OFF, IMM)			\
 	((struct bpf_insn) {					\
 		.code  = CODE,					\
@@ -281,7 +269,6 @@ struct bpf_prog_aux;
 		.imm   = IMM })
 
 /* Program exit */
-
 #define BPF_EXIT_INSN()						\
 	((struct bpf_insn) {					\
 		.code  = BPF_JMP | BPF_EXIT,			\
@@ -291,7 +278,6 @@ struct bpf_prog_aux;
 		.imm   = 0 })
 
 /* Internal classic blocks for direct assignment */
-
 #define __BPF_STMT(CODE, K)					\
 	((struct sock_filter) BPF_STMT(CODE, K))
 

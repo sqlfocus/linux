@@ -1,6 +1,10 @@
 #ifndef _UAPI__LINUX_BPF_COMMON_H__
 #define _UAPI__LINUX_BPF_COMMON_H__
 
+/* 本头文件定义cBPF的指令集结构sock_filter->code; 由~/include/uapi/linux/filter.h
+   文件引用，实现cBPF功能 */
+/* 本头文件也被~/include/uapi/linux/bpf.h引用，并在此基础上拓展为eBPF的指令结构 */
+
 /* Instruction classes */
 #define BPF_CLASS(code) ((code) & 0x07)
 #define		BPF_LD		0x00
@@ -18,12 +22,12 @@
 #define		BPF_H		0x08
 #define		BPF_B		0x10
 #define BPF_MODE(code)  ((code) & 0xe0)
-#define		BPF_IMM		0x00
-#define		BPF_ABS		0x20
-#define		BPF_IND		0x40
+#define		BPF_IMM		0x00    /* 加载立即数 */
+#define		BPF_ABS		0x20    /* 访问报文数据，直接访问, BPF_LD_ABS() */
+#define		BPF_IND		0x40    /* 访问报文数据，间接访问，BPF_LD_IND() */
 #define		BPF_MEM		0x60
-#define		BPF_LEN		0x80
-#define		BPF_MSH		0xa0
+#define		BPF_LEN		0x80    /* 仅用于cbpf */
+#define		BPF_MSH		0xa0    /* 仅用于cbpf */
 
 /* alu/jmp fields */
 #define BPF_OP(code)    ((code) & 0xf0)
@@ -45,8 +49,10 @@
 #define		BPF_JGE		0x30
 #define		BPF_JSET        0x40
 #define BPF_SRC(code)   ((code) & 0x08)
-#define		BPF_K		0x00
-#define		BPF_X		0x08
+#define		BPF_K		0x00   /* cbpf:32-bit immediate as source operand */
+                               /* ebpf: use 32-bit immediate as source operand */
+#define		BPF_X		0x08   /* cbpf:register X as source operand */
+                               /* ebpf:use 'src_reg' register as source operand */
 
 #ifndef BPF_MAXINSNS
 #define BPF_MAXINSNS 4096
