@@ -120,6 +120,7 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
 ** 指令类型
 类似于CBPF，支持丰富的指令类型，包括load/store/jmp/alu/alu64等；具体参考
  - include/uapi/linux/bpf.h
+ - include/linux/filter.h
 
 ** map
 映射内存用于eBPF，做为内核程序和用户态程序共享通信的通用存储；此映射区域
@@ -138,6 +139,24 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
     : seccomp  -->   seccomp_data
     : BPF      -->   skb
 
+* 简单示例
+内核中预留了bpf的示例代码，路径 ~${linux-src-path}/samples/bpf~ ；可以阅
+读此处代码，增加对bpf外围系统的了解。
+ #+BEGIN_EXAMPLE
+ 内核收到的数据报文按类型计数
+ $ cd ~/work
+ $ cp ${linux-src-path}/samples/bpf/sock_example.c .
+ $ cp ${linux-src-path}/samples/bpf/libbpf.* .
+ $ gcc sock_example.c libbpf.c
+ $ sudo ./a.out
+ #+END_EXAMPLE
+另外，BCC项目利用ebpf，完善的支持kprobe、uprobe、tracepoint、perf等，可
+以参考并加以利用，节省大量的开发。
+
+备注：本人设备上需要屏蔽 ~bpf_create_map()/libbpf.c~ 创建交互内存表函数
+的代码 ~.map_flags = map_flags~ ；因为本人设备ubuntu16.04内核版本较拷贝
+代码老，对应数据结构没有提供对应字段。
+
 * xt_bpf
 netfilter
 
@@ -148,8 +167,10 @@ qdisc layer
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf
  - LSF文档，~/Documentation/networking/filter.txt
  - CBPF编译器工具，~/tools/net/
+ - man bpf
+ - ebpf编程示例，~/samples/bpf/
+ - [[https://github.com/iovisor/bcc][BCC]]
  - ~/kernel/bpf/
- - ~/samples/bpf/
  - ~/tools/lib/bpf/
 
 
