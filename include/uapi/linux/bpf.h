@@ -81,26 +81,26 @@ struct bpf_insn {
 
 /* BPF syscall commands, see bpf(2) man-page for details. */
 enum bpf_cmd {
-	BPF_MAP_CREATE,
-	BPF_MAP_LOOKUP_ELEM,
-	BPF_MAP_UPDATE_ELEM,
-	BPF_MAP_DELETE_ELEM,
-	BPF_MAP_GET_NEXT_KEY,
-	BPF_PROG_LOAD,
-	BPF_OBJ_PIN,
-	BPF_OBJ_GET,
+	BPF_MAP_CREATE,      /* 创建表项 */
+	BPF_MAP_LOOKUP_ELEM, /* */
+	BPF_MAP_UPDATE_ELEM, /* */
+	BPF_MAP_DELETE_ELEM, /* */
+	BPF_MAP_GET_NEXT_KEY,/* */
+	BPF_PROG_LOAD,       /* */
+	BPF_OBJ_PIN,         /* */
+	BPF_OBJ_GET,         /* */
 };
 
 enum bpf_map_type {
 	BPF_MAP_TYPE_UNSPEC,
-	BPF_MAP_TYPE_HASH,
-	BPF_MAP_TYPE_ARRAY,
-	BPF_MAP_TYPE_PROG_ARRAY,
-	BPF_MAP_TYPE_PERF_EVENT_ARRAY,
-	BPF_MAP_TYPE_PERCPU_HASH,
-	BPF_MAP_TYPE_PERCPU_ARRAY,
-	BPF_MAP_TYPE_STACK_TRACE,
-	BPF_MAP_TYPE_CGROUP_ARRAY,
+	BPF_MAP_TYPE_HASH,               /* */
+	BPF_MAP_TYPE_ARRAY,              /* 数组式表 */
+	BPF_MAP_TYPE_PROG_ARRAY,         /* */
+	BPF_MAP_TYPE_PERF_EVENT_ARRAY,   /* */
+	BPF_MAP_TYPE_PERCPU_HASH,        /* */
+	BPF_MAP_TYPE_PERCPU_ARRAY,       /* */
+	BPF_MAP_TYPE_STACK_TRACE,        /* */
+	BPF_MAP_TYPE_CGROUP_ARRAY,       /* */
 };
 
 enum bpf_prog_type {
@@ -128,7 +128,7 @@ union bpf_attr {
 		__u32	map_type;	/* one of enum bpf_map_type */
 		__u32	key_size;	/* size of key in bytes */
 		__u32	value_size;	/* size of value in bytes */
-		__u32	max_entries;	/* max number of entries in a map */
+		__u32	max_entries;/* max number of entries in a map */
 		__u32	map_flags;	/* prealloc or not */
 	};
 

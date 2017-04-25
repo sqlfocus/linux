@@ -1,4 +1,4 @@
-/*
+o/*
  * NET		An implementation of the SOCKET network access protocol.
  *
  * Version:	@(#)socket.c	1.1.93	18/02/95

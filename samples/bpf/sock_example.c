@@ -33,6 +33,7 @@ static int test_sock(void)
 	int sock = -1, map_fd, prog_fd, i, key;
 	long long value = 0, tcp_cnt, udp_cnt, icmp_cnt;
 
+    /* 创建表项，用于内核态＋用户态交互 */
 	map_fd = bpf_create_map(BPF_MAP_TYPE_ARRAY, sizeof(key), sizeof(value),
 				256, 0);
 	if (map_fd < 0) {
@@ -40,6 +41,7 @@ static int test_sock(void)
 		goto cleanup;
 	}
 
+    /* 统计代码 */
 	struct bpf_insn prog[] = {
 		BPF_MOV64_REG(BPF_REG_6, BPF_REG_1),
 		BPF_LD_ABS(BPF_B, ETH_HLEN + offsetof(struct iphdr, protocol) /* R0 = ip->proto */),
@@ -55,6 +57,7 @@ static int test_sock(void)
 		BPF_EXIT_INSN(),
 	};
 
+    /* 加载统计代码 */
 	prog_fd = bpf_prog_load(BPF_PROG_TYPE_SOCKET_FILTER, prog, sizeof(prog),
 				"GPL", 0);
 	if (prog_fd < 0) {
@@ -62,14 +65,15 @@ static int test_sock(void)
 		goto cleanup;
 	}
 
+    /* 加载到内核的统计代码，附加到lo接口插口 */
 	sock = open_raw_sock("lo");
-
 	if (setsockopt(sock, SOL_SOCKET, SO_ATTACH_BPF, &prog_fd,
-		       sizeof(prog_fd)) < 0) {
+                   sizeof(prog_fd)) < 0) {   /* ~/net/socket.c */
 		printf("setsockopt %s\n", strerror(errno));
 		goto cleanup;
 	}
 
+    /* 每1秒打印一次，显示统计结果 */
 	for (i = 0; i < 10; i++) {
 		key = IPPROTO_TCP;
 		assert(bpf_lookup_elem(map_fd, &key, &tcp_cnt) == 0);

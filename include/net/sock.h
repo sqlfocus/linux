@@ -369,7 +369,7 @@ struct sock {
 	atomic_t		sk_drops;
 	int			sk_rcvbuf;
 
-	struct sk_filter __rcu	*sk_filter;
+	struct sk_filter __rcu	*sk_filter;         /* 挂接到插口的ebpf过滤程序 */
 	union {
 		struct socket_wq __rcu	*sk_wq;
 		struct socket_wq	*sk_wq_raw;

@@ -16,7 +16,7 @@
 struct perf_event;
 struct bpf_map;
 
-/* map is generic key/value storage optionally accesible by eBPF programs */
+/* ebpf共享内存的操控集合；map is generic key/value storage optionally accesible by eBPF programs */
 struct bpf_map_ops {
 	/* funcs callable from userspace (via syscall) */
 	struct bpf_map *(*map_alloc)(union bpf_attr *attr);
@@ -35,24 +35,26 @@ struct bpf_map_ops {
 	void (*map_fd_put_ptr)(void *ptr);
 };
 
+/* ebpf的共享内存描述结构 */
 struct bpf_map {
-	atomic_t refcnt;
+	atomic_t refcnt;              /* 引用计数 */
 	enum bpf_map_type map_type;
 	u32 key_size;
 	u32 value_size;
 	u32 max_entries;
 	u32 map_flags;
-	u32 pages;
+	u32 pages;                    /* 占用的页数 */
 	struct user_struct *user;
 	const struct bpf_map_ops *ops;
 	struct work_struct work;
-	atomic_t usercnt;
+	atomic_t usercnt;             /* 用户计数 */
 };
 
+/* 支持的bpf共享内存，类型及操作集合 */
 struct bpf_map_type_list {
 	struct list_head list_node;
-	const struct bpf_map_ops *ops;
-	enum bpf_map_type type;
+	const struct bpf_map_ops *ops;   /* 操控集合 */
+	enum bpf_map_type type;          /* 类型 */
 };
 
 /* function argument constraints */
@@ -176,7 +178,7 @@ struct bpf_prog_aux {
 	atomic_t refcnt;
 	u32 used_map_cnt;
 	u32 max_ctx_offset;
-	const struct bpf_verifier_ops *ops;
+	const struct bpf_verifier_ops *ops;    /* 本类型程序的操控集合 */
 	struct bpf_map **used_maps;
 	struct bpf_prog *prog;
 	struct user_struct *user;

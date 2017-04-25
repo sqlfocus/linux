@@ -163,6 +163,27 @@ netfilter
 * cls_bpf
 qdisc layer
 
+* 示例代码阅读
+ - TCP/UDP/ICMP报文统计计数， ~samples/bpf/sock_example.c~
+    : bpf_create_map()
+    :   syscall(__NR_bpf, BPF_MAP_CREATE,,)          ~/kernel/bpf/syscall.c
+    : bpf_prog_load()
+    :   syscall(__NR_bpf, BPF_PROG_LOAD,,)
+    :     bpf_prog_load()                            ~/kernel/bpf/syscall.c
+    :       find_prog_type()
+    :       bpf_check()                              合法性检测
+    :       fixup_bpf_calls()
+    :       bpf_prog_select_runtime()                JIT编译
+    :       bpf_prog_new_fd()                        建立对应的fd
+    : open_raw_sock()
+    : setsockopt()                                   ~/net/socket.c
+    :   SYSCALL_DEFINE5(setsockopt,,)
+    :     sock_setsockopt()
+    :       sk_attach_bpf()                          ~/net/core/filter.c
+    :         __sk_attach_prog()                     ebpf程序赋值到struct sock->sk_filter
+    : bpf_lookup_elem()
+ - 
+
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf
  - LSF文档，~/Documentation/networking/filter.txt
@@ -170,6 +191,7 @@ qdisc layer
  - man bpf
  - ebpf编程示例，~/samples/bpf/
  - [[https://github.com/iovisor/bcc][BCC]]
+ - man tc
  - ~/kernel/bpf/
  - ~/tools/lib/bpf/
 

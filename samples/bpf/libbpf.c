@@ -28,7 +28,8 @@ int bpf_create_map(enum bpf_map_type map_type, int key_size, int value_size,
 		.max_entries = max_entries,
 		.map_flags = map_flags,
 	};
-
+    
+    /* ~/kernel/bpf/syscall.c, 参考SYSCALL_DEFINE3(bpf,,,) */
 	return syscall(__NR_bpf, BPF_MAP_CREATE, &attr, sizeof(attr));
 }
 
@@ -80,6 +81,7 @@ int bpf_get_next_key(int fd, void *key, void *next_key)
 
 char bpf_log_buf[LOG_BUF_SIZE];
 
+/* 加载ebpf代码到内核 */
 int bpf_prog_load(enum bpf_prog_type prog_type,
 		  const struct bpf_insn *insns, int prog_len,
 		  const char *license, int kern_version)
@@ -123,6 +125,7 @@ int bpf_obj_get(const char *pathname)
 	return syscall(__NR_bpf, BPF_OBJ_GET, &attr, sizeof(attr));
 }
 
+/* 参考man 7 packet；建立对应接口的原始套接字，以接收接口的原始报文 */
 int open_raw_sock(const char *name)
 {
 	struct sockaddr_ll sll;
@@ -134,6 +137,7 @@ int open_raw_sock(const char *name)
 		return -1;
 	}
 
+    /* 绑定接口 */
 	memset(&sll, 0, sizeof(sll));
 	sll.sll_family = AF_PACKET;
 	sll.sll_ifindex = if_nametoindex(name);

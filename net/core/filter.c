@@ -1180,6 +1180,7 @@ static int __sk_attach_prog(struct bpf_prog *prog, struct sock *sk)
 		return -ENOMEM;
 	}
 
+    /* 挂接到插口 */
 	old_fp = rcu_dereference_protected(sk->sk_filter,
 					   lockdep_sock_is_held(sk));
 	rcu_assign_pointer(sk->sk_filter, fp);
@@ -1304,6 +1305,7 @@ static struct bpf_prog *__get_bpf(u32 ufd, struct sock *sk)
 	return bpf_prog_get_type(ufd, BPF_PROG_TYPE_SOCKET_FILTER);
 }
 
+/* 挂接ebpf过滤程序到插口 */
 int sk_attach_bpf(u32 ufd, struct sock *sk)
 {
 	struct bpf_prog *prog = __get_bpf(ufd, sk);
@@ -1312,7 +1314,7 @@ int sk_attach_bpf(u32 ufd, struct sock *sk)
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
 
-	err = __sk_attach_prog(prog, sk);
+	err = __sk_attach_prog(prog, sk);   /* 挂接到struct sock->sk_filter */
 	if (err < 0) {
 		bpf_prog_put(prog);
 		return err;
@@ -2939,7 +2941,7 @@ static const struct bpf_verifier_ops xdp_ops = {
 };
 
 static struct bpf_prog_type_list sk_filter_type __read_mostly = {
-	.ops	= &sk_filter_ops,
+	.ops	= &sk_filter_ops,    /* 操作集合 */
 	.type	= BPF_PROG_TYPE_SOCKET_FILTER,
 };
 
@@ -2960,7 +2962,7 @@ static struct bpf_prog_type_list xdp_type __read_mostly = {
 
 static int __init register_sk_filter_ops(void)
 {
-	bpf_register_prog_type(&sk_filter_type);
+	bpf_register_prog_type(&sk_filter_type);   /* BPF_PROG_TYPE_SOCKET_FILTER */
 	bpf_register_prog_type(&sched_cls_type);
 	bpf_register_prog_type(&sched_act_type);
 	bpf_register_prog_type(&xdp_type);

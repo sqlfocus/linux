@@ -382,6 +382,7 @@ struct bpf_binary_header {
 	u8 image[];
 };
 
+/* ebpf程序指令数据结构 */
 struct bpf_prog {
 	u16			pages;		/* Number of allocated pages */
 	kmemcheck_bitfield_begin(meta);
@@ -390,23 +391,24 @@ struct bpf_prog {
 				cb_access:1,	/* Is control block accessed? */
 				dst_needed:1;	/* Do we need dst entry? */
 	kmemcheck_bitfield_end(meta);
-	u32			len;		/* Number of filter blocks */
+	u32			len;		/* 指令数，Number of filter blocks */
 	enum bpf_prog_type	type;		/* Type of BPF program */
 	struct bpf_prog_aux	*aux;		/* Auxiliary fields */
 	struct sock_fprog_kern	*orig_prog;	/* Original BPF program */
 	unsigned int		(*bpf_func)(const struct sk_buff *skb,
 					    const struct bpf_insn *filter);
-	/* Instructions for interpreter */
+	/* ebpf指令，Instructions for interpreter */
 	union {
 		struct sock_filter	insns[0];
 		struct bpf_insn		insnsi[0];
 	};
 };
 
+/* 挂接到插口的ebpf过滤器描述结构 */
 struct sk_filter {
-	atomic_t	refcnt;
+	atomic_t	refcnt;     /* 引用计数 */
 	struct rcu_head	rcu;
-	struct bpf_prog	*prog;
+	struct bpf_prog	*prog;  /* ebpf程序描述结构 */
 };
 
 #define BPF_PROG_RUN(filter, ctx)  (*filter->bpf_func)(ctx, filter->insnsi)

@@ -889,9 +889,9 @@ set_rcvbuf:
 		}
 		break;
 
-	case SO_ATTACH_BPF:
+	case SO_ATTACH_BPF:      /* 新式的ebpf，插口过滤器，类型BPF_PROG_TYPE_SOCKET_FILTER */
 		ret = -EINVAL;
-		if (optlen == sizeof(u32)) {
+		if (optlen == sizeof(u32)) {    /* 参数为加载到内核中的ebpf程序内存对应的文件句柄 */
 			u32 ufd;
 
 			ret = -EFAULT;

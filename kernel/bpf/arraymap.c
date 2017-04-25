@@ -43,7 +43,7 @@ static int bpf_array_alloc_percpu(struct bpf_array *array)
 	return 0;
 }
 
-/* Called from syscall */
+/* 数组类型MAP分配内存，PERCPU类型的迟分配；Called from syscall */
 static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 {
 	bool percpu = attr->map_type == BPF_MAP_TYPE_PERCPU_ARRAY;
@@ -274,6 +274,7 @@ static const struct bpf_map_ops array_ops = {
 	.map_delete_elem = array_map_delete_elem,
 };
 
+/* 数组式bpf表 */
 static struct bpf_map_type_list array_type __read_mostly = {
 	.ops = &array_ops,
 	.type = BPF_MAP_TYPE_ARRAY,

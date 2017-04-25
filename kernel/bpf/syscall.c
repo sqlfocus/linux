@@ -22,7 +22,7 @@ DEFINE_PER_CPU(int, bpf_prog_active);
 
 int sysctl_unprivileged_bpf_disabled __read_mostly;
 
-static LIST_HEAD(bpf_map_types);
+static LIST_HEAD(bpf_map_types);     /* 内核支持的bpf共享内存类型 */
 
 static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 {
@@ -42,7 +42,7 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 	return ERR_PTR(-EINVAL);
 }
 
-/* boot time registration of different map implementations */
+/* 注册内核支持的bpf共享内存类型，boot time registration of different map implementations */
 void bpf_register_map_type(struct bpf_map_type_list *tl)
 {
 	list_add(&tl->list_node, &bpf_map_types);
@@ -184,18 +184,22 @@ static int map_create(union bpf_attr *attr)
 	if (err)
 		return -EINVAL;
 
-	/* find map type and init map: hashtable vs rbtree vs bloom vs ... */
+	/* 查找map类型，并利用预置函数分配内存；
+       find map type and init map: hashtable vs rbtree vs bloom vs ... */
 	map = find_and_alloc_map(attr);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
 
+    /* 增加引用计数 */
 	atomic_set(&map->refcnt, 1);
 	atomic_set(&map->usercnt, 1);
 
+    /* 检查内存限制 */
 	err = bpf_map_charge_memlock(map);
 	if (err)
 		goto free_map;
 
+    /* 分配对应的文件描述符，并返回fd */
 	err = bpf_map_new_fd(map);
 	if (err < 0)
 		/* failed to allocate fd */
@@ -689,7 +693,8 @@ static struct bpf_prog *__bpf_prog_get(u32 ufd, enum bpf_prog_type *type)
 {
 	struct fd f = fdget(ufd);
 	struct bpf_prog *prog;
-
+    
+    /* 由fd搜索对应的ebpf程序 */
 	prog = ____bpf_prog_get(f);
 	if (IS_ERR(prog))
 		return prog;
@@ -697,7 +702,8 @@ static struct bpf_prog *__bpf_prog_get(u32 ufd, enum bpf_prog_type *type)
 		prog = ERR_PTR(-EINVAL);
 		goto out;
 	}
-
+    
+    /* 增加引用计数 */
 	prog = bpf_prog_inc(prog);
 out:
 	fdput(f);
@@ -718,6 +724,7 @@ EXPORT_SYMBOL_GPL(bpf_prog_get_type);
 /* last field in 'union bpf_attr' used by this command */
 #define	BPF_PROG_LOAD_LAST_FIELD kern_version
 
+/* 加载ebpf程序 */
 static int bpf_prog_load(union bpf_attr *attr)
 {
 	enum bpf_prog_type type = attr->prog_type;
@@ -735,12 +742,15 @@ static int bpf_prog_load(union bpf_attr *attr)
 		return -EFAULT;
 	license[sizeof(license) - 1] = 0;
 
-	/* eBPF programs must be GPL compatible to use GPL-ed functions */
+	/* 验证license，必须是GPL或兼容许可证；
+       eBPF programs must be GPL compatible to use GPL-ed functions */
 	is_gpl = license_is_gpl_compatible(license);
 
+    /* 4096条指令上限 */
 	if (attr->insn_cnt >= BPF_MAXINSNS)
 		return -EINVAL;
 
+    /* kprobe必须校验内核版本 */
 	if (type == BPF_PROG_TYPE_KPROBE &&
 	    attr->kern_version != LINUX_VERSION_CODE)
 		return -EINVAL;
@@ -748,7 +758,7 @@ static int bpf_prog_load(union bpf_attr *attr)
 	if (type != BPF_PROG_TYPE_SOCKET_FILTER && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	/* plain bpf_prog allocation */
+	/* 分配内存，存储指令及对应的描述结构；plain bpf_prog allocation */
 	prog = bpf_prog_alloc(bpf_prog_size(attr->insn_cnt), GFP_USER);
 	if (!prog)
 		return -ENOMEM;
@@ -759,6 +769,7 @@ static int bpf_prog_load(union bpf_attr *attr)
 
 	prog->len = attr->insn_cnt;
 
+    /* copy指令到内核态 */
 	err = -EFAULT;
 	if (copy_from_user(prog->insns, u64_to_ptr(attr->insns),
 			   prog->len * sizeof(struct bpf_insn)) != 0)
@@ -770,12 +781,12 @@ static int bpf_prog_load(union bpf_attr *attr)
 	atomic_set(&prog->aux->refcnt, 1);
 	prog->gpl_compatible = is_gpl ? 1 : 0;
 
-	/* find program type: socket_filter vs tracing_filter */
+	/* 查找已注册的程序类型，find program type: socket_filter vs tracing_filter */
 	err = find_prog_type(type, prog);
 	if (err < 0)
 		goto free_prog;
 
-	/* run eBPF verifier */
+	/* 安全性检测，run eBPF verifier */
 	err = bpf_check(&prog, attr);
 	if (err < 0)
 		goto free_used_maps;
@@ -783,11 +794,12 @@ static int bpf_prog_load(union bpf_attr *attr)
 	/* fixup BPF_CALL->imm field */
 	fixup_bpf_calls(prog);
 
-	/* eBPF program is ready to be JITed */
+	/* JIT编译，eBPF program is ready to be JITed */
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
 		goto free_used_maps;
 
+    /* 编译完的ebpf程序关联到fd */
 	err = bpf_prog_new_fd(prog);
 	if (err < 0)
 		/* failed to allocate fd */
@@ -822,6 +834,7 @@ static int bpf_obj_get(const union bpf_attr *attr)
 	return bpf_obj_get_user(u64_to_ptr(attr->pathname));
 }
 
+/* bpf()系统调用，参考man bpf */
 SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, size)
 {
 	union bpf_attr attr = {};
@@ -859,33 +872,33 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 		size = sizeof(attr);
 	}
 
-	/* copy attributes from user space, may be less than sizeof(bpf_attr) */
+	/* 从用户空间拷贝属性值，仅拷贝内核支持的部分 */
 	if (copy_from_user(&attr, uattr, size) != 0)
 		return -EFAULT;
 
 	switch (cmd) {
-	case BPF_MAP_CREATE:
+	case BPF_MAP_CREATE:            /* 创建内核、用户态共享表项；返回值为共享内存fd */
 		err = map_create(&attr);
 		break;
-	case BPF_MAP_LOOKUP_ELEM:
+	case BPF_MAP_LOOKUP_ELEM:       /* */
 		err = map_lookup_elem(&attr);
 		break;
-	case BPF_MAP_UPDATE_ELEM:
+	case BPF_MAP_UPDATE_ELEM:       /* */
 		err = map_update_elem(&attr);
 		break;
-	case BPF_MAP_DELETE_ELEM:
+	case BPF_MAP_DELETE_ELEM:       /* */
 		err = map_delete_elem(&attr);
 		break;
-	case BPF_MAP_GET_NEXT_KEY:
+	case BPF_MAP_GET_NEXT_KEY:      /* */
 		err = map_get_next_key(&attr);
 		break;
-	case BPF_PROG_LOAD:
+	case BPF_PROG_LOAD:             /* 加载ebpf程序到内核 */
 		err = bpf_prog_load(&attr);
 		break;
-	case BPF_OBJ_PIN:
+	case BPF_OBJ_PIN:               /* */
 		err = bpf_obj_pin(&attr);
 		break;
-	case BPF_OBJ_GET:
+	case BPF_OBJ_GET:               /* */
 		err = bpf_obj_get(&attr);
 		break;
 	default:
