@@ -180,6 +180,7 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
  $ mkdir build
  $ cd build
  $ cmake -G "Unix Makefiles" ../llvm-4.0.0.src/
+ $ make
  $ cmake -DCMAKE_INSTALL_PREFIX=/home/sqlfocus/Program/llvm -P cmake_install.cmake
 
  可执行文件加入搜索路径
@@ -194,17 +195,43 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
 ** 示例
  #+BEGIN_EXAMPLE
  $ cd ~/work
- $ cp ${linux-src-path}/samples/bpf/sampleip_user.c .
- $ cp ${linux-src-path}/samples/bpf/sampleip_kern.c .
- $ cp ${linux-src-path}/samples/bpf/bpf_load.c .
+ $
+ $ cp ${linux-src-path}/samples/bpf/bpf_load.c .            #依赖
  $ cp ${linux-src-path}/samples/bpf/bpf_load.h .
  $ cp ${linux-src-path}/samples/bpf/libbpf.c .
  $ cp ${linux-src-path}/samples/bpf/libbpf.h .
  $ cp ${linux-src-path}/samples/bpf/bpf_helpers.h .
- $ gcc libbpf.c bpf_load.c sampleip_user.c -o sampleip_user
- $ clang -emit-llvm -c sampleip_kern.c -o - | llc -march=bpf -filetype=obj -o sampleip_kern.o
+ $
+ $ cp ${linux-src-path}/samples/bpf/sampleip_user.c .       #应用程序
+ $ cp ${linux-src-path}/samples/bpf/sampleip_kern.c .
+ $
+ $ gcc libbpf.c bpf_load.c sampleip_user.c -o sampleip_user #编译用户态程序
+ $
+ $ clang  -nostdinc -isystem /usr/lib/gcc/x86_64-linux-gnu/4.9/include \
+        -I/lib/modules/4.10.0-20-generic/build/arch/x86/include \
+        -I/lib/modules/4.10.0-20-generic/build/arch/x86/include/generated/uapi \
+        -I/lib/modules/4.10.0-20-generic/build/arch/x86/include/generated  \
+        -I/lib/modules/4.10.0-20-generic/build/include \
+        -I/lib/modules/4.10.0-20-generic/build/arch/x86/include/uapi \
+        -I/lib/modules/4.10.0-20-generic/build/include/uapi \
+        -I/lib/modules/4.10.0-20-generic/build/include/generated/uapi \
+        -include /lib/modules/4.10.0-20-generic/build/include/linux/kconfig.h  \
+	-D__KERNEL__ -D__ASM_SYSREG_H -Wno-unused-value -Wno-pointer-sign \
+	-Wno-compare-distinct-pointer-types \
+	-O2 -emit-llvm -c sampleip_kern.c -o -| llc -march=bpf -filetype=obj -o sampleip_kern.o
+ $                                                          #编译内核态程序
  $ sudo ./sampleip_user
- ???
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 此处的命令由内核编译流程中提取得到
+ $ cd ${linux-src-tree}
+ $ make menuconfig
+ $ make -B -d -n samples/bpf/ > output.txt
+
+ 注意当gcc大于6.2时，会出现堆栈指针检查的错误，导致无法编译；此时需要
+ 低版本的gcc，如gcc-4.9
+ $ make CC=gcc-4.9 -B -d -n samples/bpf/ > output.txt
  #+END_EXAMPLE
 
 * xt_bpf
