@@ -4567,7 +4567,7 @@ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned lon
 	u32 flags = arg;
 
 	switch (cmd) {
-	case PERF_EVENT_IOC_ENABLE:
+	case PERF_EVENT_IOC_ENABLE:            /* 使能perf采样 */
 		func = _perf_event_enable;
 		break;
 	case PERF_EVENT_IOC_DISABLE:
@@ -4613,7 +4613,7 @@ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned lon
 	case PERF_EVENT_IOC_SET_FILTER:
 		return perf_event_set_filter(event, (void __user *)arg);
 
-	case PERF_EVENT_IOC_SET_BPF:
+	case PERF_EVENT_IOC_SET_BPF:           /* 挂接ebpf程序 */
 		return perf_event_set_bpf_prog(event, arg);
 
 	case PERF_EVENT_IOC_PAUSE_OUTPUT: {
@@ -9500,7 +9500,7 @@ static int perf_event_set_clock(struct perf_event *event, clockid_t clk_id)
  * @pid:		target pid
  * @cpu:		target cpu
  * @group_fd:		group leader event fd
- */
+ *//* 打开perf事件监控，关联到任务、cpu */
 SYSCALL_DEFINE5(perf_event_open,
 		struct perf_event_attr __user *, attr_uptr,
 		pid_t, pid, int, cpu, int, group_fd, unsigned long, flags)
@@ -9555,6 +9555,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	if (flags & PERF_FLAG_FD_CLOEXEC)
 		f_flags |= O_CLOEXEC;
 
+    /* 获取fd，对应perf事件 */
 	event_fd = get_unused_fd_flags(f_flags);
 	if (event_fd < 0)
 		return event_fd;
@@ -9607,6 +9608,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	if (flags & PERF_FLAG_PID_CGROUP)
 		cgroup_fd = pid;
 
+    /* 分配perf事件描述结构 */
 	event = perf_event_alloc(&attr, cpu, task, group_leader, NULL,
 				 NULL, NULL, cgroup_fd);
 	if (IS_ERR(event)) {
@@ -9727,6 +9729,7 @@ SYSCALL_DEFINE5(perf_event_open,
 			goto err_context;
 	}
 
+    /* 挂接文件系统 */
 	event_file = anon_inode_getfile("[perf_event]", &perf_fops, event,
 					f_flags);
 	if (IS_ERR(event_file)) {
@@ -9862,7 +9865,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	 * new event on the sibling_list. This ensures destruction
 	 * of the group leader will find the pointer to itself in
 	 * perf_group_detach().
-	 */
+	 *//* 对应文件描述符和新建的文件 */
 	fdput(group);
 	fd_install(event_fd, event_file);
 	return event_fd;

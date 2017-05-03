@@ -139,7 +139,7 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
     : seccomp  -->   seccomp_data
     : BPF      -->   skb
 
-* 简单示例
+* 汇编示例
 内核中预留了bpf的示例代码，路径 ~${linux-src-path}/samples/bpf~ ；可以阅
 读此处代码，增加对bpf外围系统的了解。
  #+BEGIN_EXAMPLE
@@ -156,6 +156,56 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
 备注：本人设备上需要屏蔽 ~bpf_create_map()/libbpf.c~ 创建交互内存表函数
 的代码 ~.map_flags = map_flags~ ；因为本人设备ubuntu16.04内核版本较拷贝
 代码老，对应数据结构没有提供对应字段。
+
+* c语言示例
+** 安装clang编译环境
+ #+BEGIN_EXAMPLE
+ 参考http://clang.llvm.org/get_started.html
+ 
+ 下载源码包
+ ~/Downloads/llvm-4.0.0.src.tar.xz
+ ~/Downloads/cfe-4.0.0.src.tar.xz
+ ~/Downloads/clang-tools-extra-4.0.0.src.tar.xz
+ ~/Downloads/compiler-rt-4.0.0.src.tar.xz
+
+ 编译
+ $ cd ~/work
+ $ tar Jxvf ~/Downloads/llvm-4.0.0.src.tar.xz
+ $ tar Jxvf ~/Downloads/cfe-4.0.0.src.tar.xz
+ $ mv cfe-4.0.0.src/ llvm-4.0.0.src/tools/
+ $ tar Jxvf ~/Downloads/clang-tools-extra-4.0.0.src.tar.xz
+ $ mv clang-tools-extra-4.0.0.src/ llvm-4.0.0.src/tools/cfe-4.0.0.src/tools/
+ $ tar Jxvf ~/Downloads/compiler-rt-4.0.0.src.tar.xz
+ $ mv compiler-rt-4.0.0.src/ llvm-4.0.0.src/projects/
+ $ mkdir build
+ $ cd build
+ $ cmake -G "Unix Makefiles" ../llvm-4.0.0.src/
+ $ cmake -DCMAKE_INSTALL_PREFIX=/home/sqlfocus/Program/llvm -P cmake_install.cmake
+
+ 可执行文件加入搜索路径
+ $ emacs -nw ~/.bashrc
+     export PATH=$PATH:/home/sqlfocus/Program/llvm/bin
+ $ source ~/.bashrc
+
+ 验证
+ $ clang --help
+ #+END_EXAMPLE
+
+** 示例
+ #+BEGIN_EXAMPLE
+ $ cd ~/work
+ $ cp ${linux-src-path}/samples/bpf/sampleip_user.c .
+ $ cp ${linux-src-path}/samples/bpf/sampleip_kern.c .
+ $ cp ${linux-src-path}/samples/bpf/bpf_load.c .
+ $ cp ${linux-src-path}/samples/bpf/bpf_load.h .
+ $ cp ${linux-src-path}/samples/bpf/libbpf.c .
+ $ cp ${linux-src-path}/samples/bpf/libbpf.h .
+ $ cp ${linux-src-path}/samples/bpf/bpf_helpers.h .
+ $ gcc libbpf.c bpf_load.c sampleip_user.c -o sampleip_user
+ $ clang -emit-llvm -c sampleip_kern.c -o - | llc -march=bpf -filetype=obj -o sampleip_kern.o
+ $ sudo ./sampleip_user
+ ???
+ #+END_EXAMPLE
 
 * xt_bpf
 netfilter
@@ -182,7 +232,6 @@ qdisc layer
     :       sk_attach_bpf()                          ~/net/core/filter.c
     :         __sk_attach_prog()                     ebpf程序赋值到struct sock->sk_filter
     : bpf_lookup_elem()
- - 
 
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf

@@ -29,6 +29,7 @@
  - http://blog.csdn.net/zhenshi/article/details/15604
  - http://blog.csdn.net/hhhbbb/article/details/6855004
  - http://blog.csdn.net/xuchao1229/article/details/8915831
+ - [[http://www.mr511.de/software/][libelf库]]
 
 
 

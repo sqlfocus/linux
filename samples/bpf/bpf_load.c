@@ -23,14 +23,14 @@
 
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
-static char license[128];
-static int kern_version;
-static bool processed_sec[128];
-int map_fd[MAX_MAPS];
-int prog_fd[MAX_PROGS];
-int event_fd[MAX_PROGS];
+static char license[128];           /* elf文件的license段 */
+static int kern_version;            /* 内核版本，elf文件的version段 */
+static bool processed_sec[128];     /* 标识处理过的elf段(section) */
+int map_fd[MAX_MAPS];               /* 加载elf文件maps段，生成的共享表 */
+int prog_fd[MAX_PROGS];             /* 加载elf文件段，生成的ebpf程序 */
+int event_fd[MAX_PROGS];            /* */
 int prog_cnt;
-int prog_array_fd = -1;
+int prog_array_fd = -1;             /* map_fd[]中对应的array类型的MAP */
 
 static int populate_prog_array(const char *event, int prog_fd)
 {
@@ -44,8 +44,10 @@ static int populate_prog_array(const char *event, int prog_fd)
 	return 0;
 }
 
+/* 加载ebpf程序到内核 */
 static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 {
+    /* 分类 */
 	bool is_socket = strncmp(event, "socket", 6) == 0;
 	bool is_kprobe = strncmp(event, "kprobe/", 7) == 0;
 	bool is_kretprobe = strncmp(event, "kretprobe/", 10) == 0;
@@ -77,12 +79,12 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		return -1;
 	}
 
+    /* 加载 */
 	fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
 	if (fd < 0) {
 		printf("bpf_prog_load() err=%d\n%s", errno, bpf_log_buf);
 		return -1;
 	}
-
 	prog_fd[prog_cnt++] = fd;
 
 	if (is_xdp || is_perf_event)
@@ -159,6 +161,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	id = atoi(buf);
 	attr.config = id;
 
+    /* perf事件 */
 	efd = perf_event_open(&attr, -1/*pid*/, 0/*cpu*/, -1/*group_fd*/, 0);
 	if (efd < 0) {
 		printf("event %d fd %d err %s\n", id, efd, strerror(errno));
@@ -171,6 +174,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	return 0;
 }
 
+/* 根据elf的map section，加载ebpf的共享内存表MAP */
 static int load_maps(struct bpf_map_def *maps, int len)
 {
 	int i;
@@ -247,6 +251,7 @@ static int parse_relo_and_apply(Elf_Data *data, Elf_Data *symbols,
 	return 0;
 }
 
+/* 加载llvm编译的.o文件，这样可以编写c语言版本的ebpf程序; 参考man elf */
 int load_bpf_file(char *path)
 {
 	int fd, i;
@@ -263,18 +268,20 @@ int load_bpf_file(char *path)
 	if (fd < 0)
 		return 1;
 
+    /* 开始解析传入的elf文件 */
 	elf = elf_begin(fd, ELF_C_READ, NULL);
-
 	if (!elf)
 		return 1;
 
+    /* 获取elf头 */
 	if (gelf_getehdr(elf, &ehdr) != &ehdr)
 		return 1;
 
-	/* clear all kprobes */
+	/* 清空kprobe事件，clear all kprobes */
 	i = system("echo \"\" > /sys/kernel/debug/tracing/kprobe_events");
 
-	/* scan over all elf sections to get license and map info */
+	/* 提取elf特定段信息，如内核版本、许可证、共享表等
+       scan over all elf sections to get license and map info */
 	for (i = 1; i < ehdr.e_shnum; i++) {
 
 		if (get_sec(elf, i, &ehdr, &shname, &shdr, &data))
@@ -285,18 +292,18 @@ int load_bpf_file(char *path)
 			       i, shname, data->d_buf, data->d_size,
 			       shdr.sh_link, (int) shdr.sh_flags);
 
-		if (strcmp(shname, "license") == 0) {
+		if (strcmp(shname, "license") == 0) {     /* 记录license */
 			processed_sec[i] = true;
 			memcpy(license, data->d_buf, data->d_size);
 		} else if (strcmp(shname, "version") == 0) {
 			processed_sec[i] = true;
-			if (data->d_size != sizeof(int)) {
+			if (data->d_size != sizeof(int)) {    /* 记录内核版本 */
 				printf("invalid size of version section %zd\n",
 				       data->d_size);
 				return 1;
 			}
 			memcpy(&kern_version, data->d_buf, sizeof(int));
-		} else if (strcmp(shname, "maps") == 0) {
+		} else if (strcmp(shname, "maps") == 0) { /* 加载共享表 */
 			processed_sec[i] = true;
 			if (load_maps(data->d_buf, data->d_size))
 				return 1;
@@ -305,7 +312,8 @@ int load_bpf_file(char *path)
 		}
 	}
 
-	/* load programs that need map fixup (relocations) */
+	/* 加载需要重定向的ebpf程序，
+       load programs that need map fixup (relocations) */
 	for (i = 1; i < ehdr.e_shnum; i++) {
 
 		if (get_sec(elf, i, &ehdr, &shname, &shdr, &data))
@@ -335,7 +343,7 @@ int load_bpf_file(char *path)
 		}
 	}
 
-	/* load programs that don't use maps */
+	/* 加载不需重定向的程序，load programs that don't use maps */
 	for (i = 1; i < ehdr.e_shnum; i++) {
 
 		if (processed_sec[i])
@@ -378,7 +386,7 @@ void read_trace_pipe(void)
 }
 
 #define MAX_SYMS 300000
-static struct ksym syms[MAX_SYMS];
+static struct ksym syms[MAX_SYMS];          /* 内核符号表 */
 static int sym_cnt;
 
 static int ksym_cmp(const void *p1, const void *p2)
@@ -386,6 +394,7 @@ static int ksym_cmp(const void *p1, const void *p2)
 	return ((struct ksym *)p1)->addr - ((struct ksym *)p2)->addr;
 }
 
+/* 读取/proc/kallsyms，加载内核符号表；格式参考proc_kallsyms_System.map.org */
 int load_kallsyms(void)
 {
 	FILE *f = fopen("/proc/kallsyms", "r");
@@ -396,23 +405,26 @@ int load_kallsyms(void)
 
 	if (!f)
 		return -ENOENT;
-
+    /* 逐行解析：指令地址 符号名，保留到全局数组，syms[] */
 	while (!feof(f)) {
 		if (!fgets(buf, sizeof(buf), f))
 			break;
 		if (sscanf(buf, "%p %c %s", &addr, &symbol, func) != 3)
 			break;
-		if (!addr)
+		if (!addr)      /* <TAKECARE!!!>超级权限才能读到值 */
 			continue;
 		syms[i].addr = (long) addr;
 		syms[i].name = strdup(func);
 		i++;
 	}
+    
+    /* 按地址排序 */
 	sym_cnt = i;
 	qsort(syms, sym_cnt, sizeof(struct ksym), ksym_cmp);
 	return 0;
 }
 
+/* 搜索内核符号表，查找PC指针对应的符号名 */
 struct ksym *ksym_search(long key)
 {
 	int start = 0, end = sym_cnt;

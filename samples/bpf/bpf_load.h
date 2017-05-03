@@ -23,9 +23,11 @@ extern int event_fd[MAX_PROGS];
 int load_bpf_file(char *path);
 
 void read_trace_pipe(void);
+
+/* 内核符号表数据结构 */
 struct ksym {
-	long addr;
-	char *name;
+	long addr;   /* 地址 */
+	char *name;  /* 符号名，包括函数、变量等 */
 };
 
 int load_kallsyms(void);

@@ -4,7 +4,8 @@
 /* helper macro to place programs, maps, license in
  * different sections in elf_bpf file. Section names
  * are interpreted by elf_bpf loader
- */
+ *//* 指导llvm编译器生成elf文件时，不同代码放置的section；
+      默认情况下，代码放置到text段 */
 #define SEC(NAME) __attribute__((section(NAME), used))
 
 /* helper functions called from eBPF programs written in C */

@@ -883,13 +883,13 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 	case BPF_MAP_LOOKUP_ELEM:       /* */
 		err = map_lookup_elem(&attr);
 		break;
-	case BPF_MAP_UPDATE_ELEM:       /* */
+	case BPF_MAP_UPDATE_ELEM:       /* 更新MAP元素 */
 		err = map_update_elem(&attr);
 		break;
 	case BPF_MAP_DELETE_ELEM:       /* */
 		err = map_delete_elem(&attr);
 		break;
-	case BPF_MAP_GET_NEXT_KEY:      /* */
+	case BPF_MAP_GET_NEXT_KEY:      /* 根据当前key获取下一个key，用于遍历共享表 */
 		err = map_get_next_key(&attr);
 		break;
 	case BPF_PROG_LOAD:             /* 加载ebpf程序到内核 */

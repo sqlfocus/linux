@@ -19,13 +19,13 @@ struct bpf_map_def SEC("maps") ip_map = {
 	.max_entries = MAX_IPS,
 };
 
-SEC("perf_event")
+SEC("perf_event")      /* 使得代码被定位到elf不同的section中 */
 int do_sample(struct bpf_perf_event_data *ctx)
 {
 	u64 ip;
 	u32 *value, init_val = 1;
 
-	ip = ctx->regs.ip;
+	ip = ctx->regs.ip; /* 记录采样的PC指针地址 */
 	value = bpf_map_lookup_elem(&ip_map, &ip);
 	if (value)
 		*value += 1;

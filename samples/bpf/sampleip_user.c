@@ -25,7 +25,7 @@
 #define DEFAULT_FREQ	99
 #define DEFAULT_SECS	5
 #define MAX_IPS		8192
-#define PAGE_OFFSET	0xffff880000000000
+#define PAGE_OFFSET	0xffff880000000000     /* 内核地址起始值 */
 
 static int nr_cpus;
 
@@ -39,7 +39,7 @@ static void usage(void)
 static int sampling_start(int *pmu_fd, int freq)
 {
 	int i;
-
+    /* 采样属性 */
 	struct perf_event_attr pe_sample_attr = {
 		.type = PERF_TYPE_SOFTWARE,
 		.freq = 1,
@@ -48,6 +48,7 @@ static int sampling_start(int *pmu_fd, int freq)
 		.inherit = 1,
 	};
 
+    /* 每CPU开启perf采样 */
 	for (i = 0; i < nr_cpus; i++) {
 		pmu_fd[i] = perf_event_open(&pe_sample_attr, -1 /* pid */, i,
 					    -1 /* group_fd */, 0 /* flags */);
@@ -55,8 +56,10 @@ static int sampling_start(int *pmu_fd, int freq)
 			fprintf(stderr, "ERROR: Initializing perf sampling\n");
 			return 1;
 		}
+        /* 插入ebpf程序，~/fs/ioctl.c; ===> perf_ioctl() ~/kernel/events/core.c */
 		assert(ioctl(pmu_fd[i], PERF_EVENT_IOC_SET_BPF,
 			     prog_fd[0]) == 0);
+        /* 使能perf采样 */
 		assert(ioctl(pmu_fd[i], PERF_EVENT_IOC_ENABLE, 0) == 0);
 	}
 
@@ -84,6 +87,7 @@ static int count_cmp(const void *p1, const void *p2)
 	return ((struct ipcount *)p1)->count - ((struct ipcount *)p2)->count;
 }
 
+/* 打印采样共享表 */
 static void print_ip_map(int fd)
 {
 	struct ksym *sym;
@@ -91,9 +95,9 @@ static void print_ip_map(int fd)
 	__u32 value;
 	int i, max;
 
-	printf("%-19s %-32s %s\n", "ADDR", "KSYM", "COUNT");
+	printf("%-19s %-32s %s\n", "ADDR", "KSYM", "COUNT");  /* 左对齐 */
 
-	/* fetch IPs and counts */
+	/* 遍历MAP并提取值，fetch IPs and counts */
 	key = 0, i = 0;
 	while (bpf_get_next_key(fd, &key, &next_key) == 0) {
 		bpf_lookup_elem(fd, &next_key, &value);
@@ -103,14 +107,14 @@ static void print_ip_map(int fd)
 	}
 	max = i;
 
-	/* sort and print */
+	/* 排序并打印，sort and print */
 	qsort(counts, max, sizeof(struct ipcount), count_cmp);
 	for (i = 0; i < max; i++) {
-		if (counts[i].ip > PAGE_OFFSET) {
+		if (counts[i].ip > PAGE_OFFSET) {     /* 内核地址 */
 			sym = ksym_search(counts[i].ip);
 			printf("0x%-17llx %-32s %u\n", counts[i].ip, sym->name,
 			       counts[i].count);
-		} else {
+		} else {                              /* 用户态地址 */
 			printf("0x%-17llx %-32s %u\n", counts[i].ip, "(user)",
 			       counts[i].count);
 		}
@@ -134,7 +138,7 @@ int main(int argc, char **argv)
 	char filename[256];
 	int *pmu_fd, opt, freq = DEFAULT_FREQ, secs = DEFAULT_SECS;
 
-	/* process arguments */
+	/* 提取参数，采样频率，采样时长；process arguments */
 	while ((opt = getopt(argc, argv, "F:h")) != -1) {
 		switch (opt) {
 		case 'F':
@@ -153,7 +157,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	/* initialize kernel symbol translation */
+	/* 存储内核符号表；initialize kernel symbol translation */
 	if (load_kallsyms()) {
 		fprintf(stderr, "ERROR: loading /proc/kallsyms\n");
 		return 2;
@@ -167,7 +171,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	/* load BPF program */
+	/* 加载通过llvm编译的ebpf程序 */
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
 	if (load_bpf_file(filename)) {
 		fprintf(stderr, "ERROR: loading BPF program (errno %d):\n",
@@ -180,7 +184,7 @@ int main(int argc, char **argv)
 	}
 	signal(SIGINT, int_exit);
 
-	/* do sampling */
+	/* 采样，do sampling */
 	printf("Sampling at %d Hertz for %d seconds. Ctrl-C also ends.\n",
 	       freq, secs);
 	if (sampling_start(pmu_fd, freq) != 0)
@@ -189,7 +193,7 @@ int main(int argc, char **argv)
 	sampling_end(pmu_fd);
 	free(pmu_fd);
 
-	/* output sample counts */
+	/* 输出采样结果，output sample counts */
 	print_ip_map(map_fd[0]);
 
 	return 0;
