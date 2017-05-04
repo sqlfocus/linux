@@ -96,7 +96,7 @@ struct dentry {
 	const struct dentry_operations *d_op;
 	struct super_block *d_sb;	/* The root of the dentry tree */
 	unsigned long d_time;		/* used by d_revalidate */
-	void *d_fsdata;			/* fs-specific data */
+	void *d_fsdata;			        /* 数据，fs-specific data */
 
 	union {
 		struct list_head d_lru;		/* LRU list */

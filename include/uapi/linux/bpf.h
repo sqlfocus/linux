@@ -81,14 +81,14 @@ struct bpf_insn {
 
 /* BPF syscall commands, see bpf(2) man-page for details. */
 enum bpf_cmd {
-	BPF_MAP_CREATE,      /* 创建表项 */
-	BPF_MAP_LOOKUP_ELEM, /* */
-	BPF_MAP_UPDATE_ELEM, /* */
-	BPF_MAP_DELETE_ELEM, /* */
-	BPF_MAP_GET_NEXT_KEY,/* */
-	BPF_PROG_LOAD,       /* */
-	BPF_OBJ_PIN,         /* */
-	BPF_OBJ_GET,         /* */
+	BPF_MAP_CREATE,      /* 共享表项相关操作 */
+	BPF_MAP_LOOKUP_ELEM,
+	BPF_MAP_UPDATE_ELEM,
+	BPF_MAP_DELETE_ELEM,
+	BPF_MAP_GET_NEXT_KEY,
+	BPF_PROG_LOAD,       /* 加载ebpf虚拟机指令程序 */
+	BPF_OBJ_PIN,         /* for persistent maps/progs */
+	BPF_OBJ_GET,
 };
 
 enum bpf_map_type {

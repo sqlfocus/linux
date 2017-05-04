@@ -19,6 +19,8 @@ BPF允许用户态程序在任何socket上添加过滤器，以允许或阻断�
  - 通过SO_DETACH_FILTER选项撤销过滤器
  - 可通过SO_LOCK_FILTER选项锁定过滤器，防止被移除和修改
 
+*备注* ：此处以简单的插口过滤程序为例，其他类似！
+
 * CBPF
 沿袭UNIX BPF的指令格式，单条指令固定长度64bits，如下：
  #+BEGIN_EXAMPLE
@@ -259,6 +261,8 @@ qdisc layer
     :       sk_attach_bpf()                          ~/net/core/filter.c
     :         __sk_attach_prog()                     ebpf程序赋值到struct sock->sk_filter
     : bpf_lookup_elem()
+ - 持久化共享表、ebpf程序， ~samples/bpf/fds_example.c~
+    : 具体说明参考bpf_obj_pin/bpf_obj_get()函数(~/samples/bpf/libbpf.h)
 
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf

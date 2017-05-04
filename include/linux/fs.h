@@ -702,7 +702,7 @@ struct inode {
 	struct fscrypt_info	*i_crypt_info;
 #endif
 
-	void			*i_private; /* fs or device private pointer */
+	void			*i_private;             /* 私有数据指针，fs or device private pointer */
 };
 
 static inline int inode_unhashed(struct inode *inode)

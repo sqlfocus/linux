@@ -4,6 +4,7 @@
 
 struct bpf_insn;
 
+/* ebpf MAP操控函数 */
 int bpf_create_map(enum bpf_map_type map_type, int key_size, int value_size,
 		   int max_entries, int map_flags);
 int bpf_update_elem(int fd, void *key, void *value, unsigned long long flags);
@@ -15,6 +16,20 @@ int bpf_prog_load(enum bpf_prog_type prog_type,
 		  const struct bpf_insn *insns, int insn_len,
 		  const char *license, int kern_version);
 
+/* 支持"persistent" eBPF maps/programs；通过此，maps/programs可以在宿主(创建者)
+   程序退出后继续在内存中存活，并可以被后续的程序检索到。
+
+   这项功能适用于多种场景，如tc classifier/action。当tc解析了ELF obj，提取并加
+   载maps/progs到内核，随着tc进程的退出，它们的文件描述符号将无法检索；这样，
+   后续tc无法访问或迁移这些资源，将导致maps资源不容易共享，如在进\出网络数据面
+   之间。
+
+   为解决此问题，引入了小型文件系统，/sys/fs/bpf/，以存储map\prog对象；任意后
+   续其他命令空间的挂载，都将指向相同的实例(Any subsequent mounts within a 
+   given namespace will point to the same instance)。此文件系统允许创建用户自
+   定义的目录结构(bpf(BPF_OBJ_PIN/BPF_OBJ_GET,,)), 通过路径名(pathname)可以创
+   建、获取maps/progs对象。
+*/
 int bpf_obj_pin(int fd, const char *pathname);
 int bpf_obj_get(const char *pathname);
 

@@ -21,6 +21,7 @@
 #include <linux/filter.h>
 #include <linux/bpf.h>
 
+/* ebpf文件系统对应的文件类型 */
 enum bpf_type {
 	BPF_TYPE_UNSPEC	= 0,
 	BPF_TYPE_PROG,
@@ -59,14 +60,15 @@ static void bpf_any_put(void *raw, enum bpf_type type)
 	}
 }
 
+/* 获取fd对应的ebpf对象类型，并返回fd对应的数据 */
 static void *bpf_fd_probe_obj(u32 ufd, enum bpf_type *type)
 {
 	void *raw;
 
-	*type = BPF_TYPE_MAP;
-	raw = bpf_map_get_with_uref(ufd);
+	*type = BPF_TYPE_MAP;                /* 先试验共享MAP；通过文件操作集合 */
+	raw = bpf_map_get_with_uref(ufd);    /* 判断是否属于具体的类型 */
 	if (IS_ERR(raw)) {
-		*type = BPF_TYPE_PROG;
+		*type = BPF_TYPE_PROG;           /* 再尝试ebpf程序 */
 		raw = bpf_prog_get(ufd);
 	}
 
@@ -149,7 +151,7 @@ static int bpf_mkobj_ops(struct inode *dir, struct dentry *dentry,
 		return PTR_ERR(inode);
 
 	inode->i_op = iops;
-	inode->i_private = dentry->d_fsdata;
+	inode->i_private = dentry->d_fsdata;    /* 存储共享表或ebpf程序内存指针 */
 
 	d_instantiate(dentry, inode);
 	dget(dentry);
@@ -221,14 +223,15 @@ static int bpf_obj_do_pin(const struct filename *pathname, void *raw,
 		goto out;
 	}
 
-	dentry->d_fsdata = raw;
+	dentry->d_fsdata = raw;            /* 存储共享表MAP或ebpf程序的内存指针 */
 	ret = vfs_mknod(dir, dentry, mode, devt);
-	dentry->d_fsdata = NULL;
+	dentry->d_fsdata = NULL;           /* 创建inode，并存储dentry->d_fsdata */
 out:
 	done_path_create(&path, dentry);
 	return ret;
 }
 
+/* 在ebpf文件系统"/sys/fs/bpf/"中，建立fd和路径名的对应关系 */
 int bpf_obj_pin_user(u32 ufd, const char __user *pathname)
 {
 	struct filename *pname;
@@ -240,14 +243,14 @@ int bpf_obj_pin_user(u32 ufd, const char __user *pathname)
 	if (IS_ERR(pname))
 		return PTR_ERR(pname);
 
-	raw = bpf_fd_probe_obj(ufd, &type);
+	raw = bpf_fd_probe_obj(ufd, &type);    /* 获取fd对应的ebpf对象类型，及数据 */
 	if (IS_ERR(raw)) {
 		ret = PTR_ERR(raw);
 		goto out;
 	}
 
 	ret = bpf_obj_do_pin(pname, raw, type);
-	if (ret != 0)
+	if (ret != 0)                          /* 加入ebpf文件系统 */
 		bpf_any_put(raw, type);
 out:
 	putname(pname);
@@ -266,17 +269,17 @@ static void *bpf_obj_do_get(const struct filename *pathname,
 	if (ret)
 		return ERR_PTR(ret);
 
-	inode = d_backing_inode(path.dentry);
+	inode = d_backing_inode(path.dentry);  /* 获取inode */
 	ret = inode_permission(inode, MAY_WRITE);
 	if (ret)
 		goto out;
 
-	ret = bpf_inode_type(inode, type);
+	ret = bpf_inode_type(inode, type);     /* 根据操控指针集合获取文件类型 */
 	if (ret)
 		goto out;
 
 	raw = bpf_any_get(inode->i_private, *type);
-	if (!IS_ERR(raw))
+	if (!IS_ERR(raw))                      /* 获取内存指针 */
 		touch_atime(&path);
 
 	path_put(&path);
@@ -286,6 +289,7 @@ out:
 	return ERR_PTR(ret);
 }
 
+/* 在ebpf文件系统，通过路径名获取对应的共享表MAP或ebpf程序的fd */
 int bpf_obj_get_user(const char __user *pathname)
 {
 	enum bpf_type type = BPF_TYPE_UNSPEC;
@@ -297,13 +301,13 @@ int bpf_obj_get_user(const char __user *pathname)
 	if (IS_ERR(pname))
 		return PTR_ERR(pname);
 
-	raw = bpf_obj_do_get(pname, &type);
+	raw = bpf_obj_do_get(pname, &type);  /* 获取共享表或ebpf程序的内存指针 */
 	if (IS_ERR(raw)) {
 		ret = PTR_ERR(raw);
 		goto out;
 	}
 
-	if (type == BPF_TYPE_PROG)
+	if (type == BPF_TYPE_PROG)           /* 新建fd与之对应 */
 		ret = bpf_prog_new_fd(raw);
 	else if (type == BPF_TYPE_MAP)
 		ret = bpf_map_new_fd(raw);
@@ -314,7 +318,7 @@ int bpf_obj_get_user(const char __user *pathname)
 		bpf_any_put(raw, type);
 out:
 	putname(pname);
-	return ret;
+	return ret;                          /* 返回对应的fd */
 }
 
 static void bpf_evict_inode(struct inode *inode)

@@ -880,13 +880,13 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 	case BPF_MAP_CREATE:            /* 创建内核、用户态共享表项；返回值为共享内存fd */
 		err = map_create(&attr);
 		break;
-	case BPF_MAP_LOOKUP_ELEM:       /* */
+	case BPF_MAP_LOOKUP_ELEM:       /* 查找MAP元素 */
 		err = map_lookup_elem(&attr);
 		break;
 	case BPF_MAP_UPDATE_ELEM:       /* 更新MAP元素 */
 		err = map_update_elem(&attr);
 		break;
-	case BPF_MAP_DELETE_ELEM:       /* */
+	case BPF_MAP_DELETE_ELEM:       /* 删除MAP元素 */
 		err = map_delete_elem(&attr);
 		break;
 	case BPF_MAP_GET_NEXT_KEY:      /* 根据当前key获取下一个key，用于遍历共享表 */
@@ -895,10 +895,10 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 	case BPF_PROG_LOAD:             /* 加载ebpf程序到内核 */
 		err = bpf_prog_load(&attr);
 		break;
-	case BPF_OBJ_PIN:               /* */
-		err = bpf_obj_pin(&attr);
+	case BPF_OBJ_PIN:               /* 建立fd和路径名的对应关系，以支持持久化 */
+		err = bpf_obj_pin(&attr);   /* 对应文件系统/sys/fs/bpf/ */
 		break;
-	case BPF_OBJ_GET:               /* */
+	case BPF_OBJ_GET:               /* 通过路径名获取fd */
 		err = bpf_obj_get(&attr);
 		break;
 	default:
