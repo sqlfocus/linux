@@ -78,6 +78,7 @@ int static_key_count(struct static_key *key)
 }
 EXPORT_SYMBOL_GPL(static_key_count);
 
+/* 使能tracepoint的jump label */
 void static_key_enable(struct static_key *key)
 {
 	int count = static_key_count(key);
@@ -89,6 +90,7 @@ void static_key_enable(struct static_key *key)
 }
 EXPORT_SYMBOL_GPL(static_key_enable);
 
+/* 禁用tracepoint的jump label */
 void static_key_disable(struct static_key *key)
 {
 	int count = static_key_count(key);
@@ -100,6 +102,7 @@ void static_key_disable(struct static_key *key)
 }
 EXPORT_SYMBOL_GPL(static_key_disable);
 
+/* 启动tracepoint点，jump label优化处理 */
 void static_key_slow_inc(struct static_key *key)
 {
 	int v, v1;
@@ -117,7 +120,8 @@ void static_key_slow_inc(struct static_key *key)
 	 * static_key_slow_inc() down the slow path, and it is non-zero
 	 * so it counts as "enabled" in jump_label_update().  Note that
 	 * atomic_inc_unless_negative() checks >= 0, so roll our own.
-	 */
+	 *//* 防止并发，仅有一个能够成功调用jump_label_update(); 其余的
+          在此处等待更新可执行文件的内存指令完毕，然后退出 */
 	for (v = atomic_read(&key->enabled); v > 0; v = v1) {
 		v1 = atomic_cmpxchg(&key->enabled, v, v + 1);
 		if (likely(v1 == v))
@@ -127,7 +131,7 @@ void static_key_slow_inc(struct static_key *key)
 	jump_label_lock();
 	if (atomic_read(&key->enabled) == 0) {
 		atomic_set(&key->enabled, -1);
-		jump_label_update(key);
+		jump_label_update(key);             /* 更新tracepoint的判断分支语句 */
 		atomic_set(&key->enabled, 1);
 	} else {
 		atomic_inc(&key->enabled);
@@ -261,12 +265,13 @@ static void __jump_label_update(struct static_key *key,
 				struct jump_entry *entry,
 				struct jump_entry *stop)
 {
+    /* 查找匹配的tracepoint点定义 */
 	for (; (entry < stop) && (jump_entry_key(entry) == key); entry++) {
 		/*
 		 * entry->code set to 0 invalidates module init text sections
 		 * kernel_text_address() verifies we are not in core kernel
 		 * init code, see jump_label_invalidate_module_init().
-		 */
+		 *//* 更改代码的text段，更新其jump语句 */
 		if (entry->code && kernel_text_address(entry->code))
 			arch_jump_label_transform(entry, jump_label_type(entry));
 	}
@@ -551,9 +556,10 @@ int jump_label_text_reserved(void *start, void *end)
 	return ret;
 }
 
+/* 更新tracepoint点的判断分支语句，利用jumap label优化，提升性能 */
 static void jump_label_update(struct static_key *key)
 {
-	struct jump_entry *stop = __stop___jump_table;
+	struct jump_entry *stop = __stop___jump_table;      /* 跳转表尾 */
 	struct jump_entry *entry = static_key_entries(key);
 #ifdef CONFIG_MODULES
 	struct module *mod;

@@ -1,0 +1,310 @@
+#+TITLE: tracepoint简介
+#+AUTHOR: sqlfocus
+
+
+本文档摘录linux内核的tracepoint跟踪方式，了解更多的调试内核的工具；也
+加深对ebpf的理解，以便更好使用！
+
+
+* 简介
+Linux很早以前就已经拥有了动态调试技术，kprobe；它提供了kernel API，注册
+待观察的内核指令触发的probe(探针函数)；这些API可以在内核模块儿中直接调
+用，或被systemtap利用封装为更高层面的脚本语言。
+动态跟踪有很多优点：1)关闭时，zero overhead；2)probe探针可以探测内核任
+意指令，具有足够的灵活性。
+动态跟踪为提供灵活性，与生俱来带有缺陷：1)探针函数带来significant overhead，
+因为内部实现上利用了断点(breakpoints)和异常处理(exception handlers)；2)
+探针位置可以轻松设置在function entry、exit，但探测函数内部或局部变量将比较
+困难，需要内核开启编译参数CONFIG_DEBUG_INFO。
+
+在代码中放置的tracepoint提供调用探针函数的hook点，并且探针函数可以延迟到
+运行时再提供。tracepoint可以分为两种状态，"on"(挂接了探针函数), "off"(未
+挂接探针)。
+当处于"off"状态时，对内核没有实质性的影响，1)增加一点点时间消耗，判断是
+否执行hook；2)空间损耗，在被检测函数指令后添加函数调用指令，另外需要额外
+的空间存放特定的数据结构。
+当处于"on"状态时，探针函数在每次tracepoint执行时被调用(tracepoint调用者
+的执行环境)；执行完毕后，返回调用者环境继续执行。
+tracepoints避免kprobe的缺点，可以被放置在内核任何地方，可方便的访问任何
+局部变量；并且探针函数的执行比较轻(lightweight)。Linux从2.6.32后，主线
+代码开始支持静态tracepoint(参考jump_label.org)。
+
+一般情况下，静态tracepoints被用于tracing和performance accounting(如perf)。
+添加静态tracepoint比较简单，可参考Linux源码 ~/samples/trace_events/~ 。
+
+* 使用
+利用tracepoints分三个层次，1)第一个层次为内核定义，一般被内核开发者关注；
+2)第二个层次是开启跟踪后，输出的trace event消息，用于debug；3)第三个层次
+是perf等内核测试工具，它们利用trace event消息监控系统内核的某些特性。
+
+** 定义tracepoint
+参考Documentation/trace/tracepoints.txt
+ - 在头文件调用DECLARE_TRACE()
+ - 在.c文件调用DEFINE_TRACE()
+当前内核代码利用TRACE_EVENT()组合这两个动作，利用cpp的宏特性实现；第一次
+加载头文件，利用tracepoint.h实现DECLARE_TRACE()；第二次加载头文件，利用
+define_trace.h实现DEFINE_TRACE()。
+
+** 应用态使用tracepoint
+参考Documentation/trace/tracepoint-analysis.txt
+ - 检查debugfs文件系统是否挂载
+    : mount | grep debugfs
+    :
+    : 挂载，mount -t debugfs none /sys/kernel/debug
+ - 查看支持的静态跟踪点
+    : cat /sys/kernel/debug/tracing/available_events
+    :    group:跟踪点名
+    :    irq:softirq_entry
+    :    ...
+ - 使能某个静态跟踪点
+    : echo 1 >  /sys/kernel/debug/tracing/events/irq/softirq_entry/enable
+    : 其中"irq/softirq_entry"对应"group:跟踪点名"
+ - 查看输出
+    : cat /sys/kernel/debug/tracing/trace
+    : cat /sys/kernel/debug/tracing/trace_pipe
+ - 关闭静态跟踪点
+    : echo 0 >  /sys/kernel/debug/tracing/events/irq/softirq_entry/enable
+
+** 内核态使用tracepoint
+ - 静态跟踪点注册探针
+    : register_trace_softirq_entry()
+    :
+    : 注意，函数名的构成，register/trace/softirq_entry
+ - 卸载静态跟踪点的探针
+    : unregister_trace_softirq_entry()
+
+** perf工具
+ - 列举可监控的跟踪点
+   : sudo perf list 2>&1 | grep Tracepoint
+ - 使用
+   : sudo perf stat -a -e fs:do_sys_open sleep 10
+   :
+   : sudo perf record -e fs:do_sys_open ls
+   : sudo perf report
+
+* 源码导读
+本节以 ~samples/trace_events/trace-events-sample.h~ 文件为例，摘录
+~TRACE_EVENT_CONDITION(foo_bar, ...)~ 在内核的实现流程。
+
+ #+BEGIN_EXAMPLE
+ 头文件定义
+ TRACE_EVENT_CONDITION(foo_bar_with_cond,
+	TP_PROTO(const char *foo, int bar),
+	TP_ARGS(foo, bar),
+	TP_CONDITION(!(bar % 10)),
+	TP_STRUCT__entry(
+		__string(foo, foo)
+		__field(int, bar)
+	),
+	TP_fast_assign(
+		__assign_str(foo, foo);
+		__entry->bar	= bar;
+	),
+	TP_printk("foo %s %d", __get_str(foo), __entry->bar)
+ );
+ #+END_EXAMPLE
+ #+BEGIN_EXAMPLE
+ 某.c引用头文件直接展开1, ~/include/linux/tracepoint.h
+ DECLARE_TRACE_CONDITION(foo_bar_with_cond, 
+                         PARAMS(const char *foo, int bar),
+                         PARAMS(foo, bar),
+			 PARAMS(!(bar % 10)))
+ #+END_EXAMPLE
+ #+BEGIN_EXAMPLE
+ 某.c引用头文件直接展开2, ~/include/linux/tracepoint.h
+ __DECLARE_TRACE(foo_bar_with_cond, 
+                 PARAMS(const char *foo, int bar),
+                 PARAMS(foo, bar),
+		 cpu_online(raw_smp_processor_id()) && (PARAMS(!(bar % 10))),
+		 PARAMS(void *__data, const char *foo, int bar),
+		 PARAMS(__data, foo, bar))
+ #+END_EXAMPLE
+ #+BEGIN_EXAMPLE
+ 某.c引用头文件直接展开3, ~/include/linux/tracepoint.h
+
+ extern struct tracepoint __tracepoint_foo_bar_with_cond;
+
+ static inline void trace_foo_bar_with_cond(proto)
+ {
+   if (static_key_false(&__tracepoint_foo_bar_with_cond.key))
+     __DO_TRACE(&__tracepoint_foo_bar_with_cond,
+		TP_PROTO(void *__data, const char *foo, int bar),
+		TP_ARGS(__data, foo, bar),
+		TP_CONDITION(cpu_online(raw_smp_processor_id()) && (!(bar % 10))),,);
+   if (IS_ENABLED(CONFIG_LOCKDEP) && (cpu_online(raw_smp_processor_id()) && (!(bar % 10)))) {
+     rcu_read_lock_sched_notrace();
+     rcu_dereference_sched(__tracepoint_foo_bar_with_cond.funcs);
+     rcu_read_unlock_sched_notrace();
+   }
+ }
+
+ __DECLARE_TRACE_RCU(foo_bar_with_cond, 
+                      PARAMS(const char *foo, int bar),
+                      PARAMS(foo, bar),
+		      PARAMS(cpu_online(raw_smp_processor_id()) && (!(bar % 10))),
+		      PARAMS(void *__data, const char *foo, int bar),
+		      PARAMS(__data, foo, bar))
+
+ static inline int register_trace_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data)
+ {
+   return tracepoint_probe_register(&__tracepoint_foo_bar_with_cond, (void *)probe, data);
+ }
+
+ static inline int register_trace_prio_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data, int prio)
+ {
+   return tracepoint_probe_register_prio(&__tracepoint_foo_bar_with_cond, (void *)probe, data, prio);
+ }
+
+ static inline int unregister_trace_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data)
+ {								\
+   return tracepoint_probe_unregister(&__tracepoint_foo_bar_with_cond,	(void *)probe, data);
+ }
+	
+ static inline void check_trace_callback_type_foo_bar_with_cond(
+          void (*cb)(void *__data, const char *foo, int bar))
+ {
+ }
+ static inline bool trace_foo_bar_with_cond_enabled(void)
+ {
+   return static_key_false(&__tracepoint_foo_bar_with_cond.key);
+ }
+ #+END_EXAMPLE
+ #+BEGIN_EXAMPLE
+ 某.c引用头文件直接展开4, ~/include/linux/tracepoint.h
+
+ /* 声明静态tracepoint点 */
+ extern struct tracepoint __tracepoint_foo_bar_with_cond;
+
+ /* 定义tracepoint点插入点函数 */
+ static inline void trace_foo_bar_with_cond(const char *foo, int bar)
+ {
+   /* 判断条件，利用jump label优化 */
+   if (static_key_false(&__tracepoint_foo_bar_with_cond.key))
+     do {
+        struct tracepoint_func *it_func_ptr;
+        void *it_func;
+        void *__data;
+
+        if (!(cpu_online(raw_smp_processor_id()) && (!(bar % 10))))
+            return;
+
+        rcu_read_lock_sched_notrace();
+        it_func_ptr = rcu_dereference_sched((&__tracepoint_foo_bar_with_cond)->funcs);
+        if (it_func_ptr) {
+          do {
+             it_func = (it_func_ptr)->func;
+             __data = (it_func_ptr)->data;
+             /* 执行注册到tracepoint点的探针函数 */
+             ((void(*)(void *__data, const char *foo, int bar))(it_func))(__data, foo, bar);
+          } while ((++it_func_ptr)->func);
+        }
+        rcu_read_unlock_sched_notrace();
+     } while (0)
+    
+   /* 大内核锁情况 */
+   if (IS_ENABLED(CONFIG_LOCKDEP) && (cpu_online(raw_smp_processor_id()) && (!(bar % 10)))) {
+     rcu_read_lock_sched_notrace();
+     rcu_dereference_sched(__tracepoint_foo_bar_with_cond.funcs);
+     rcu_read_unlock_sched_notrace();
+   }
+ }
+
+ static inline void trace_foo_bar_with_cond_rcuidle(const char *foo, int bar)
+ {
+   if (static_key_false(&__tracepoint_foo_bar_with_cond.key))
+     __DO_TRACE(&__tracepoint_foo_bar_with_cond,
+		TP_PROTO(void *__data, const char *foo, int bar),
+		TP_ARGS(__data, foo, bar),
+		TP_CONDITION(cpu_online(raw_smp_processor_id()) && (!(bar % 10))),
+		rcu_irq_enter_irqson(),
+		rcu_irq_exit_irqson());
+ }
+
+ /* 注册探针函数 */
+ static inline int register_trace_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data)
+ {
+   return tracepoint_probe_register(&__tracepoint_foo_bar_with_cond, (void *)probe, data);
+ }
+
+ /* 注册带优先级的探针函数 */
+ static inline int register_trace_prio_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data, int prio)
+ {
+   return tracepoint_probe_register_prio(&__tracepoint_foo_bar_with_cond, (void *)probe, data, prio);
+ }
+
+ /* 卸载探针函数 */
+ static inline int unregister_trace_foo_bar_with_cond(
+          void (*probe)(void *__data, const char *foo, int bar), void *data)
+ {
+   return tracepoint_probe_unregister(&__tracepoint_foo_bar_with_cond,	(void *)probe, data);
+ }
+	
+ static inline void check_trace_callback_type_foo_bar_with_cond(
+          void (*cb)(void *__data, const char *foo, int bar))
+ {
+ }
+ 
+ /* 检查tracepoint点是否使能 */
+ static inline bool trace_foo_bar_with_cond_enabled(void)
+ {
+   return static_key_false(&__tracepoint_foo_bar_with_cond.key);
+ }
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 第2次预读头文件1，~/include/trace/define_trace.h
+
+ TRACE_EVENT_CONDITION(foo_bar_with_cond,,,,,,)
+   TRACE_EVENT(foo_bar_with_cond,,,,,,)
+     DEFINE_TRACE(foo_bar_with_cond)
+       DEFINE_TRACE_FN(foo_bar_with_cond, NULL, NULL);
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 第2次预读头文件2，~/include/linux/tracepoint.h
+
+ static const char __tpstrtab_foo_bar_with_cond[]
+     __attribute__((section("__tracepoints_strings"))) = "foo_bar_with_cond";
+ /* 定义tracepoint点 */
+ struct tracepoint __tracepoint_foo_bar_with_cond
+     __attribute__((section("__tracepoints"))) =   /* 注意：声明到不同的段 */
+ { 
+   __tpstrtab_foo_bar_with_cond,      /* tracepoint点名字 */
+   STATIC_KEY_INIT_FALSE,             /* 默认禁用 */
+   NULL,                              /* */
+   NULL,                              /* */
+   NULL 
+ };
+ static struct tracepoint * const __tracepoint_ptr_foo_bar_with_cond __used
+     __attribute__((section("__tracepoints_ptrs"))) = &__tracepoint_foo_bar_with_cond;
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 后续在头文件
+ ~/include/trace/trace_events.h
+ ~/include/trace/perf.h
+ 中触发第3~10次预读头文件，完成事件输出相关操作；此处不再展开
+ #+END_EXAMPLE
+
+* 参考
+ - ~/Documentation/trace/tracepoints.txt
+ - ~/Documentation/trace/tracepoint-analysis.txt
+ - ~/samples/trace_events/*
+ - [[https://lwn.net/Articles/379903/][Using the TRACE_EVENT() macro]]
+ - [[http://netsplit.com/tracing-on-linux][Tracing on Linux]]
+ - [[https://lwn.net/Articles/365835/][Debugging the kernel using Ftrace]]
+ - [[https://lwn.net/Articles/370423/][Secrets of the Ftrace function tracer]]
+ - jump_label.org
+
+
+
+
+
+
+
+

@@ -86,5 +86,6 @@ static inline void perf_test_probe_##call(void)				\
 #define DEFINE_EVENT_PRINT(template, name, proto, args, print)	\
 	DEFINE_EVENT(template, name, PARAMS(proto), PARAMS(args))
 
+/* 第10次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 #endif /* CONFIG_PERF_EVENTS */

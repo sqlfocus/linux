@@ -87,8 +87,7 @@ int main(int argc, char **argv)
 	char filename[256];
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
-
-	if (load_bpf_file(filename)) {
+	if (load_bpf_file(filename)) {      /* 加载对应的ebpf程序到内核 */
 		printf("%s", bpf_log_buf);
 		return 1;
 	}
