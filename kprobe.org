@@ -1,0 +1,254 @@
+#+TITLE: kprobe简介
+#+AUTHOR: sqlfocus
+
+
+本文档主要摘录kprobe在内核中的实现，以期更深入理解动态调试技术；也可以为
+安全理念提供参考。
+
+* 简介
+Kprobe是内核提供的一种调试机制，它提供了一种方法，能够在不修改现有代码的
+基础上，灵活的跟踪内核函数的执行。
+
+基本工作原理：用户指定一个探测点，并把一个用户定义的处理函数关联到该探测
+点，当内核执行到该探测点时，相应的关联函数被执行，然后继续执行正常的代码
+路径。
+     
+kprobe提供了三种形式的探测点，1)一种是最基本的kprobe，能够在指定代码执行前、
+执行后进行探测，但此时不能访问被探测函数内的相关变量信息；2)一种是jprobe，
+用于探测某一函数的入口，并且能够访问对应的函数参数；3)一种是kretprobe，用于
+完成指定函数返回值的探测功能。其中最基本的是kprobe机制，jprobe以及kretprobe
+的实现都依赖于kprobe，但其代码的实现都很巧妙。
+
+** kprobe
+kprobe是最基本的探测方式，是实现后两种的基础，它可以在任意的位置放置探测
+点(函数内部的某条指令处也可以)，它提供了探测点的调用前、调用后和内存访问
+出错3种回调方式，分别是 ~pre_handler~ 、 ~post_handler~ 和 ~fault_handler~ ，
+其中 ~pre_handler~ 函数将在被探测指令被执行前回调， ~post_handler~ 会在被
+探测指令执行完毕后回调(注意不是被探测函数)， ~fault_handler~ 会在内存访问
+出错时被调用。
+
+kprobes的技术原理并不仅仅包含存软件的实现方案，它也需要硬件架构提供支持。
+其中涉及硬件架构相关的是CPU的异常处理和单步调试技术，前者用于让程序的执
+行流程陷入到用户注册的回调函数中去，而后者则用于单步执行被探测点指令，
+因此并不是所有的架构均支持。
+
+*特点与限制* 
+1) 允许在同一个被被探测位置注册多个kprobe；但jprobe不允许
+2) 除少数特例外(如实现kprobe的函数、do_page_fault和notifier_call_chain等)，
+   可以探测内核中的任何函数，包括中断处理函数
+3) 内联函数做为探测点，可能由于gcc编译器优化，达不到预期效果
+4) 可以被用来安装bug修复代码或者注入故障测试代码
+5) kprobes会避免在处理探测点函数时再次调用另一个探测点的回调函数，例如在
+   printk()函数上注册了探测点，则在它的回调函数中可能再次调用printk函数，
+   此时将不再触发printk探测点的回调，仅仅时增加了kprobe结构体中nmissed字
+   段的数值
+6) 除kprobes的注册和注销过程外，不能使用mutex锁和动态的申请内存
+7) kprobes回调函数的运行期间是关闭内核抢占的，同时也可能在关闭中断的情况
+   下执行，具体要视CPU架构而定。因此不论在何种情况下，在回调函数中不要调
+   用会放弃CPU的函数（如信号量、mutex锁等）
+8) kretprobe通过替换返回地址为预定义的trampoline的地址来实现，因此栈回溯
+   和gcc内嵌函数__builtin_return_address()调用将返回trampoline的地址而不
+   是真正的被探测函数的返回地址
+9) 如果一个函数的调用次数和返回次数不相等，则在类似这样的函数上注册kretprobe
+   将可能不会达到预期的效果，例如do_exit()函数会存在问题，而do_execve()函
+   数和do_fork()函数不会
+10)如果当在进入和退出一个函数时，CPU运行在非当前任务所有的栈上，那么往该
+   函数上注册kretprobe可能会导致不可预料的后果，因此kprobes不支持在X86_64
+   的结构下为__switch_to()函数注册kretprobe，将直接返回-EINVAL
+
+** jprobe
+jprobe基于kprobe实现，它用于获取被探测函数的入参值。
+
+*特点与限制*
+1) 注册的处理函数需和被探测的函数具有相同的函数原型(same signature)
+2) 处理函数结尾必须调用jprobe_return()
+3) 单个被探测函数不允许注册多个jprobe
+
+** kretprobe
+基于kprobe实现，用于获取被探测函数的返回值。kretprobe也是一种特殊形式的
+kprobe，有私有的pre_handler，并不支持用户定义pre_handler和post_handler
+等回调函数。其中它的pre_handler回调函数会为kretprobe探测函数执行的返回
+值做准备工作，其中最主要的就是替换掉正常流程的返回地址，让被探测函数在
+执行之后能够跳转到kretprobe所精心设计的函数中去，它会获取函数返回值，然
+后调用kretprobe->handler回调函数(被探测函数的返回地址此刻得到输出)，最
+后恢复正常执行流程。
+
+* 执行流程
+实现kprobe主要利用了内核中的两个功能特性：异常(尤其是int 3)，单步执行(
+EFLAGS中的TF标志), 大概的流程: 
+ - 注册探测点时，对被探测函数的指令码进行替换，替换为int 3
+ - 执行int 3异常，通过通知链的方式调用kprobe的异常处理函数
+ - 在kprobe异常处理函数中，判断是否存在pre_handler钩子，存在则执行
+ - 通过设置EFLAGS的TF位，进入单步调试，并且把异常返回的地址修改为保存的原指令码
+ - 代码返回，执行原有指令，执行结束后触发单步异常
+ - 在单步异常的处理中，清除单步标志，执行post_handler流程，并最终返回
+#+CAPTION: kprobe内核执行流程图
+#+NAME: fig:kprobe-process
+[[./kprobe执行流程.jpeg]] [fn:3]
+
+#+CAPTION: jprobe内核执行流程图
+#+NAME: fig:jprobe-process
+[[.jprobe执行流程.jpeg ]] [fn:4]
+
+#+CAPTION: kretprobe内核执行流程图
+#+NAME: fig:kretprobe-process
+[[.kretprobe执行流程.jpeg]] [fn:5]
+
+* 应用
+** 内核态
+典型地，kprobes操作打包成内核模块，在模块初始化流程中安装探针(probe)；模块
+退出时，卸载探针。这些操作由函数 ~register_kprobe()~ 完成，决定探针的位置
+及探针回调函数，较灵活。
+ - register_/unregister_kprobe()
+ - register_/unregister_kprobes()         :: 批量操作
+ - enable_/disable_kprobe()               :: 暂停、恢复探测点的探测
+
+** 用户态
+可通过kprobes的调试接口(/sys/kernel/debug/kprobes/)查看当前kprobe设置[fn:1]
+ - 列举已经注册的kprobe
+   : cat /sys/kernel/debug/kprobes/list
+   :   内核地址  类型 探测点symbol+offset
+   :   c015d71a  k    vfs_read+0x0
+   :   c011a316  j    do_fork+0x0
+   :   c03dedc5  r    tcp_v4_rcv+0x0
+ - 启停kprobe功能
+   : echo 1/0 > /sys/kernel/debug/kprobes/enabled
+ - 启停优化
+   : echo 1/0 > /proc/sys/debug/kprobes-optimization
+
+类似于tracepoint based events，内核也支持kprobe based events[fn:2]
+ - 添加kprobe跟踪点
+   : /sys/kernel/debug/tracing/kprobe_events
+   :
+   : p[:[GRP/]EVENT] [MOD:]SYM[+offs]|MEMADDR [FETCHARGS]  : Set a probe
+   : r[:[GRP/]EVENT] [MOD:]SYM[+0] [FETCHARGS]		   : Set a return probe
+   : -:[GRP/]EVENT					   : Clear a probe
+   :
+   : GRP         组名，默认"kprobes"
+   : EVENT       事件名，默认SYM+offs or MEMADDR
+   : MOD         模块儿名
+   : SYM[+offs]  定义kprobe插入点Symbol+offset
+   : MEMADDR	 定义kprobe插入点Address
+   : FETCHARGS	 参数Arguments
+   :   %REG	        获取寄存器REG
+   :   @ADDR		获取内存值ADDR
+   :   @SYM[+|-offs]	获取内存值SYM +|- offs
+   :   $stackN	        获取堆栈Nth
+   :   $stack	        获取堆栈地址
+   :   $retval	        获取返回值
+   :   $comm		获取当前任务命令
+   :   +|-offs(FETCHARG)获取内存值FETCHARG +|- offs
+   :   NAME=FETCHARG    设置参数名
+   :   FETCHARG:TYPE    设置参数类型 
+   :                    (u8/u16/u32/u64/s8/s16/s32/s64), hexadecimal types
+   :                    (x8/x16/x32/x64), "string" and bitfield are supported
+ - 启停跟踪点
+   : echo 1 > /sys/kernel/debug/tracing/events/kprobes/<EVENT>/enabled
+ - 设置过滤规则
+   : /sys/kernel/debug/tracing/events/kprobes/<EVENT>/filter
+ - 查看命中次数
+   : /sys/kernel/debug/tracing/kprobe_profile
+   :   event name | number of probe hits | number of probe miss-hits
+ - 查看跟踪结果
+   : cat /sys/kernel/debug/tracing/trace 
+
+* 代码摘录
+本文档摘录内核提供的示例代码[fn:6]，梳理kprobe的处理流程；以期更加清晰理
+解动态内核调试技术。
+ - init_kprobes()
+    : ~/kernel/kprobes.c
+    : kprobe模块儿初始化入口
+    :
+    : 流程
+    :   populate_kprobe_blacklist()     注册黑名单
+    :   register_die_notifier()         注册kprobe_exceptions_nb到die_chain链
+    :                                       以处理kprobe过程的异常
+    :   register_module_notifier()      注册kprobe_module_nb到module_notify_list链，
+    :                                       以便模块卸载时，删除对应的kprobe
+ - register_kprobe()
+    : ~/kernel/kprobes.c
+    : 注册kprobe探测点
+    :
+    : 流程
+    :   check_kprobe_address_safe()     检查地址
+    :   prepare_kprobe()                保存原有指令
+    :   hlist_add_head_rcu()            加入kprobe_table[]
+    :   arm_kprobe()                    使能探测点(替换为int 3---do_int3())
+ - do_int3()
+    : ~/arch/x86/kernel/traps.c
+    : INT 3中断到处理函数
+    :
+    : 流程
+    :   kprobe_int3_handler()           执行探测点处理句柄；设置ip为原探测点地址；
+    :     struct kprobe->pre_handler()      并设置单步执行，一旦中断返回，则触发
+    :     setup_singlestep()                单步中断
+    :   notify_die()
+ - do_debug()
+    : ~/arch/x86/kernel/traps.c
+    : 单步执行触发异常对应的处理函数
+    :
+    : 流程
+    :   kprobe_debug_handler()
+    :     resume_execution()            设置EIP为探测点下一条指令，并且恢复标识
+    :     struct kprobe->post_handler() 调用事后处理句柄
+
+** jprobe执行流程
+jprobe再kprobe基础上实现
+ - register_jprobe()
+    : ~/kernel/kprobes.c
+    : 注册jprobe探测点
+    :
+    : 流程
+    :   设置struct kprobe.pre_handler   = setjmp_pre_handler
+    :   设置struct kprobe.break_handler = longjmp_break_handler
+    :   register_kprobe()
+ - do_int3()
+    : 流程
+    :   setjmp_pre_handler()
+    :     保存现场
+    :     跳转到探针函数
+    :       jprobe_return()             重新触发int3
+ - do_int3()
+    : 流程
+    :   struct kprobe->break_handler
+    :   longjmp_break_handler()
+    :     恢复现场, 继续执行
+
+** kretprobe流程
+ - register_kretprobe()
+    : ~/kernel/kprobes.c
+    : 注册kretprobe探测点
+    :
+    : 流程
+    :   设置struct kprobe.pre_handler   = pre_handler_kretprobe
+    :   register_kprobe()
+ - do_int3()
+    : pre_handler_kretprobe()
+    :   struct kretprobe->entry_handler()  用户自定义句柄，探测点函数执行前调用
+    :   arch_prepare_kretprobe()        设置执行流程结束后的返回地址kretprobe_trampoline()，并保存探测点地址
+ - kretprobe_trampoline()
+    : ~/arch/x86/kernel/kprobes/core.c
+    : 探测点函数执行完毕后，返回到此函数执行
+    :
+    : 流程
+    :   trampoline_handler()
+    :     struct kretprobe->handler()   用户自定义句柄，探测点函数执行后调用
+
+* 参考
+[fn:1] ~/Documentation/kprobes.txt
+[fn:2] ~/Documentation/trace/kprobetrace.txt
+[fn:3] [[http://blog.csdn.net/luckyapple1028/article/details/52972315][Linux内核调试技术——kprobe使用与实现]]
+[fn:4] [[http://blog.csdn.net/luckyapple1028/article/details/54350410][Linux内核调试技术——jprobe使用与实现]]
+[fn:5] [[http://blog.csdn.net/luckyapple1028/article/details/54782659][Linux内核调试技术——kretprobe使用与实现]]
+[fn:6] ~/samples/kprobes/*.c
+
+
+
+
+
+
+
+
+
+
+

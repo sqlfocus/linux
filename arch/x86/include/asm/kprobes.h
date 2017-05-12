@@ -102,13 +102,13 @@ struct prev_kprobe {
 
 /* per-cpu kprobe control block */
 struct kprobe_ctlblk {
-	unsigned long kprobe_status;
-	unsigned long kprobe_old_flags;
-	unsigned long kprobe_saved_flags;
+	unsigned long kprobe_status;         /* 当前kprobe状态 */
+	unsigned long kprobe_old_flags;      /* 保存寄存器pt_regs的flag标识 */
+	unsigned long kprobe_saved_flags;    /* 保存寄存器pt_regs的flag标识 */
 	unsigned long *jprobe_saved_sp;
 	struct pt_regs jprobe_saved_regs;
 	kprobe_opcode_t jprobes_stack[MAX_STACK_SIZE];
-	struct prev_kprobe prev_kprobe;
+	struct prev_kprobe prev_kprobe;      /* 用于处理重入 */
 };
 
 extern int kprobe_fault_handler(struct pt_regs *regs, int trapnr);

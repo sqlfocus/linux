@@ -119,11 +119,11 @@ int __kernel_text_address(unsigned long addr)
 
 int kernel_text_address(unsigned long addr)
 {
-	if (core_kernel_text(addr))
+	if (core_kernel_text(addr))            /* 内核text+init text段 */
 		return 1;
-	if (is_module_text_address(addr))
+	if (is_module_text_address(addr))      /* 模块儿的text+init text段 */
 		return 1;
-	return is_ftrace_trampoline(addr);
+	return is_ftrace_trampoline(addr);     /* 在ftrace动态分配的trampoline地址空间中 */
 }
 
 /*

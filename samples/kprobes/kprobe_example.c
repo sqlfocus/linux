@@ -18,7 +18,8 @@
 static char symbol[MAX_SYMBOL_LEN] = "_do_fork";
 module_param_string(symbol, symbol, sizeof(symbol), 0644);
 
-/* For each probe you need to allocate a kprobe structure */
+/* 定义kprobe结构，以描述注册的kprobe节点，
+   For each probe you need to allocate a kprobe structure */
 static struct kprobe kp = {
 	.symbol_name	= symbol,
 };
@@ -93,11 +94,11 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr)
 static int __init kprobe_init(void)
 {
 	int ret;
-	kp.pre_handler = handler_pre;
+	kp.pre_handler = handler_pre;          /* 设置处理函数 */
 	kp.post_handler = handler_post;
 	kp.fault_handler = handler_fault;
 
-	ret = register_kprobe(&kp);
+	ret = register_kprobe(&kp);            /* 注册kprobe */
 	if (ret < 0) {
 		pr_err("register_kprobe failed, returned %d\n", ret);
 		return ret;
@@ -108,7 +109,7 @@ static int __init kprobe_init(void)
 
 static void __exit kprobe_exit(void)
 {
-	unregister_kprobe(&kp);
+	unregister_kprobe(&kp);                /* 卸载kprobe */
 	pr_info("kprobe at %p unregistered\n", kp.addr);
 }
 

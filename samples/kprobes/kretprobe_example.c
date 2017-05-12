@@ -44,7 +44,7 @@ static int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 		return 1;	/* Skip kernel threads */
 
 	data = (struct my_data *)ri->data;
-	data->entry_stamp = ktime_get();
+	data->entry_stamp = ktime_get();    /* 记录执行探测前的时间戳 */
 	return 0;
 }
 
@@ -60,7 +60,7 @@ static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 	s64 delta;
 	ktime_t now;
 
-	now = ktime_get();
+	now = ktime_get();                  /* 打印被探测函数耗时及返回值 */
 	delta = ktime_to_ns(ktime_sub(now, data->entry_stamp));
 	pr_info("%s returned %lu and took %lld ns to execute\n",
 			func_name, retval, (long long)delta);

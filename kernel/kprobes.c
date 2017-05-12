@@ -61,7 +61,7 @@
 /*
  * Some oddball architectures like 64bit powerpc have function descriptors
  * so this must be overridable.
- */
+ *//* kprobe模块，查找符号对应内核地址 */
 #ifndef kprobe_lookup_name
 #define kprobe_lookup_name(name, addr) \
 	addr = ((kprobe_opcode_t *)(kallsyms_lookup_name(name)))
@@ -87,7 +87,9 @@ static raw_spinlock_t *kretprobe_table_lock_ptr(unsigned long hash)
 	return &(kretprobe_table_locks[hash].lock);
 }
 
-/* kprobe探测黑名单，Blacklist -- list of struct kprobe_blacklist_entry */
+/* kprobe探测黑名单，加入此名单的地址不允许被探测；
+   代码中利用宏NOKPROBE_SYMBOL()生成具体的项；
+   Blacklist -- list of struct kprobe_blacklist_entry */
 static LIST_HEAD(kprobe_blacklist);
 
 #ifdef __ARCH_WANT_KPROBES_INSN_SLOT
@@ -1254,7 +1256,7 @@ static void init_aggr_kprobe(struct kprobe *ap, struct kprobe *p)
 /*
  * This is the second or subsequent kprobe at the address - handle
  * the intricacies
- */
+ *//* 对一个已经被注册过kprobe的探测点注册新的kprobe的执行流程 */
 static int register_aggr_kprobe(struct kprobe *orig_p, struct kprobe *p)
 {
 	int ret = 0;
@@ -1443,7 +1445,7 @@ static int check_kprobe_address_safe(struct kprobe *p,
 	jump_label_lock();
 	preempt_disable();
 
-	/* 地址必须在内核地址空间；不能落在黑名单内；不能跨越jump label；
+	/* 地址必须在内核地址空间；不能落在黑名单内；不能落在jump label地址空间；
        Ensure it is not in reserved area nor out of text */
 	if (!kernel_text_address((unsigned long) p->addr) ||
 	    within_kprobe_blacklist((unsigned long) p->addr) ||
@@ -1497,7 +1499,7 @@ int register_kprobe(struct kprobe *p)
 		return PTR_ERR(addr);
 	p->addr = addr;
 
-    /* 查看是否已经注册？ */
+    /* 查看此kprobe探测是否已经注册？ */
 	ret = check_kprobe_rereg(p);
 	if (ret)
 		return ret;
@@ -1523,7 +1525,7 @@ int register_kprobe(struct kprobe *p)
 	}
 
 	mutex_lock(&text_mutex);	/* Avoiding text modification */
-	ret = prepare_kprobe(p);       /* 分配特定的内存地址用于保存原有的指令 */
+	ret = prepare_kprobe(p);       /* 分配特定的内存地址，并保存原有的指令 */
 	mutex_unlock(&text_mutex);
 	if (ret)
 		goto out;
@@ -1716,7 +1718,8 @@ void unregister_kprobes(struct kprobe **kps, int num)
 }
 EXPORT_SYMBOL_GPL(unregister_kprobes);
 
-/* 被注册到die_chain链，以响应探测句柄执行中出现错误的情形 */
+/* 被注册到die_chain链，以响应探测句柄执行中出现错误的情形；设置的
+   优先级很高，确保优先被调用到 */
 static struct notifier_block kprobe_exceptions_nb = {
 	.notifier_call = kprobe_exceptions_notify,
 	.priority = 0x7fffffff /* we need to be notified first */
@@ -1742,9 +1745,9 @@ int register_jprobes(struct jprobe **jps, int num)
 		/* Verify probepoint is a function entry point */
 		if (kallsyms_lookup_size_offset(addr, NULL, &offset) &&
 		    offset == 0) {
-			jp->kp.pre_handler = setjmp_pre_handler;
+			jp->kp.pre_handler = setjmp_pre_handler; /* 设定kprobe处理句柄 */
 			jp->kp.break_handler = longjmp_break_handler;
-			ret = register_kprobe(&jp->kp);
+			ret = register_kprobe(&jp->kp);          /* 注册kprobe */
 		} else
 			ret = -EINVAL;
 
@@ -1794,7 +1797,7 @@ EXPORT_SYMBOL_GPL(unregister_jprobes);
 /*
  * This kprobe pre_handler is registered with every kretprobe. When probe
  * hits it will set up the return probe.
- */
+ *//* 命中kretprobe探测点后，执行此函数 */
 static int pre_handler_kretprobe(struct kprobe *p, struct pt_regs *regs)
 {
 	struct kretprobe *rp = container_of(p, struct kretprobe, kp);
@@ -1824,6 +1827,7 @@ static int pre_handler_kretprobe(struct kprobe *p, struct pt_regs *regs)
 		ri->rp = rp;
 		ri->task = current;
 
+        /* 执行struct kretprobe->entry_handler() */
 		if (rp->entry_handler && rp->entry_handler(ri, regs)) {
 			raw_spin_lock_irqsave(&rp->lock, flags);
 			hlist_add_head(&ri->hlist, &rp->free_instances);
@@ -1831,6 +1835,8 @@ static int pre_handler_kretprobe(struct kprobe *p, struct pt_regs *regs)
 			return 0;
 		}
 
+        /* 保存探测点地址，并设置整个执行流程结束后的返回地址
+           为kretprobe_trampoline()；即，被探测函数执行完毕后调用此函数 */
 		arch_prepare_kretprobe(ri, regs);
 
 		/* XXX(hch): why is there no hlist_move_head? */
@@ -1864,7 +1870,7 @@ int register_kretprobe(struct kretprobe *rp)
 		}
 	}
 
-	rp->kp.pre_handler = pre_handler_kretprobe;
+	rp->kp.pre_handler = pre_handler_kretprobe;  /* 注册回调 */
 	rp->kp.post_handler = NULL;
 	rp->kp.fault_handler = NULL;
 	rp->kp.break_handler = NULL;
@@ -1879,7 +1885,7 @@ int register_kretprobe(struct kretprobe *rp)
 	}
 	raw_spin_lock_init(&rp->lock);
 	INIT_HLIST_HEAD(&rp->free_instances);
-	for (i = 0; i < rp->maxactive; i++) {
+	for (i = 0; i < rp->maxactive; i++) {        /* 分配跟踪实例 */
 		inst = kmalloc(sizeof(struct kretprobe_instance) +
 			       rp->data_size, GFP_KERNEL);
 		if (inst == NULL) {
@@ -1892,7 +1898,7 @@ int register_kretprobe(struct kretprobe *rp)
 
 	rp->nmissed = 0;
 	/* Establish function entry probe point */
-	ret = register_kprobe(&rp->kp);
+	ret = register_kprobe(&rp->kp);              /* 注册基础kprobe */
 	if (ret != 0)
 		free_rp_inst(rp);
 	return ret;
@@ -2065,7 +2071,7 @@ NOKPROBE_SYMBOL(dump_kprobe);
  * the range of addresses that belong to the said functions,
  * since a kprobe need not necessarily be at the beginning
  * of a function.
- */
+ *//* 记录kprobe黑名单，不允许被探测 */
 static int __init populate_kprobe_blacklist(unsigned long *start,
 					     unsigned long *end)
 {
@@ -2135,6 +2141,7 @@ static int kprobes_module_callback(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+/* 若当某个内核模块发生卸载操作时, 检测并移除注册到该模块函数的kprobe探测点 */
 static struct notifier_block kprobe_module_nb = {
 	.notifier_call = kprobes_module_callback,
 	.priority = 0
@@ -2157,7 +2164,7 @@ static int __init init_kprobes(void)
 		raw_spin_lock_init(&(kretprobe_table_locks[i].lock));
 	}
 
-    /* 设定不能被kprobe跟踪的代码列表 */
+    /* 设定不能被kprobe跟踪的黑名单列表 */
 	err = populate_kprobe_blacklist(__start_kprobe_blacklist,
 					__stop_kprobe_blacklist);
 	if (err) {
@@ -2165,7 +2172,7 @@ static int __init init_kprobes(void)
 		pr_err("Please take care of using kprobes.\n");
 	}
 
-    /* 初始化kretprobe_blacklist[]列表中符号对应的地址 */
+    /* 初始化kretprobe黑名单列表中符号对应的地址 */
 	if (kretprobe_blacklist_size) {
 		/* lookup the function address from its name */
 		for (i = 0; kretprobe_blacklist[i].name != NULL; i++) {
@@ -2192,12 +2199,14 @@ static int __init init_kprobes(void)
     /* 架构相关初始化 */
 	err = arch_init_kprobes();
 	if (!err)
-        /* 注册到通知链die_chain，处理int 3中断 */
+        /* 注册到通知链die_chain，处理kprobe探测过程中的异常 */
 		err = register_die_notifier(&kprobe_exceptions_nb);
 	if (!err)
-        /* 注册到通知链module_notify_list */
+        /* 注册到通知链module_notify_list，若当某个内核模块发生卸载操作
+           时有必要检测并移除注册到该模块函数的探测点 */
 		err = register_module_notifier(&kprobe_module_nb);
 
+    /* 设置初始化完毕的标志 */
 	kprobes_initialized = (err == 0);
 
     /* 测试kprobe的接口API是否正常 */
@@ -2488,6 +2497,8 @@ error:
 late_initcall(debugfs_kprobe_init);
 #endif /* CONFIG_DEBUG_FS */
 
+/* 将在内核加载过程中调用，以初始化kprobe模块儿的处理流程所需的数据结构，
+   并注册回调通知链，以响应触发kprobe探测的int3 */
 module_init(init_kprobes);
 
 /* defined in arch/.../kernel/kprobes.c */

@@ -107,12 +107,12 @@ static volatile u32 twobyte_is_boostable[256 / 32] = {
 };
 #undef W
 
+/* kretprobe探测黑名单 */
 struct kretprobe_blackpoint kretprobe_blacklist[] = {
 	{"__switch_to", }, /* This function switches only current task, but
 			      doesn't switch kernel stack.*/
 	{NULL, NULL}	/* Terminator */
 };
-
 const int kretprobe_blacklist_size = ARRAY_SIZE(kretprobe_blacklist);
 
 static nokprobe_inline void
@@ -407,7 +407,8 @@ static int arch_copy_kprobe(struct kprobe *p)
 {
 	int ret;
 
-	/* Copy an instruction with recovering if other optprobe modifies it.*/
+	/* 保存指令，
+       Copy an instruction with recovering if other optprobe modifies it.*/
 	ret = __copy_instruction(p->ainsn.insn, p->addr);
 	if (!ret)
 		return -EINVAL;
@@ -424,7 +425,8 @@ static int arch_copy_kprobe(struct kprobe *p)
 	/* Check whether the instruction modifies Interrupt Flag or not */
 	p->ainsn.if_modifier = is_IF_modifier(p->ainsn.insn);
 
-	/* Also, displacement change doesn't affect the first byte */
+	/* 保存指令第一个字节，
+       Also, displacement change doesn't affect the first byte */
 	p->opcode = p->ainsn.insn[0];
 
 	return 0;
@@ -432,6 +434,7 @@ static int arch_copy_kprobe(struct kprobe *p)
 
 int arch_prepare_kprobe(struct kprobe *p)
 {
+    /* 对于smp系统，被探测地址不能被用于smp-alternatives */
 	if (alternatives_text_reserved(p->addr, p->addr))
 		return -EINVAL;
 
@@ -441,7 +444,7 @@ int arch_prepare_kprobe(struct kprobe *p)
 	p->ainsn.insn = get_insn_slot();
 	if (!p->ainsn.insn)
 		return -ENOMEM;
-
+    /* 保存探测点指令 */
 	return arch_copy_kprobe(p);
 }
 
@@ -485,8 +488,8 @@ static nokprobe_inline void
 set_current_kprobe(struct kprobe *p, struct pt_regs *regs,
 		   struct kprobe_ctlblk *kcb)
 {
-	__this_cpu_write(current_kprobe, p);
-	kcb->kprobe_saved_flags = kcb->kprobe_old_flags
+	__this_cpu_write(current_kprobe, p);              /* 保存当前的kprobe */
+	kcb->kprobe_saved_flags = kcb->kprobe_old_flags   /* 保存标识 */
 		= (regs->flags & (X86_EFLAGS_TF | X86_EFLAGS_IF));
 	if (p->ainsn.if_modifier)
 		kcb->kprobe_saved_flags &= ~X86_EFLAGS_IF;
@@ -523,6 +526,9 @@ void arch_prepare_kretprobe(struct kretprobe_instance *ri, struct pt_regs *regs)
 }
 NOKPROBE_SYMBOL(arch_prepare_kretprobe);
 
+/* 当程序执行到某条想要单独执行CPU指令时，在执行之前产生一次CPU异常，此
+   时把异常返回时的CPU的EFLAGS寄存器的TF(调试位)位置为1，把IF(中断屏蔽
+   位)标志位置为0，然后把EIP指向单步执行的指令 */
 static void setup_singlestep(struct kprobe *p, struct pt_regs *regs,
 			     struct kprobe_ctlblk *kcb, int reenter)
 {
@@ -610,28 +616,31 @@ int kprobe_int3_handler(struct pt_regs *regs)
 	struct kprobe *p;
 	struct kprobe_ctlblk *kcb;
 
+    /* 确保从内核态触发kprobe */
 	if (user_mode(regs))
 		return 0;
-
+    
+    /* 获取被探测指针地址 */
 	addr = (kprobe_opcode_t *)(regs->ip - sizeof(kprobe_opcode_t));
 	/*
 	 * We don't want to be preempted for the entire
 	 * duration of kprobe processing. We conditionally
 	 * re-enable preemption at the end of this function,
 	 * and also in reenter_kprobe() and setup_singlestep().
-	 */
+	 *//* 禁用内核抢占 */
 	preempt_disable();
 
+    /* 获取当前cpu的kprobe_ctlblk控制结构体, 和本次要处理的kprobe实例 */
 	kcb = get_kprobe_ctlblk();
 	p = get_kprobe(addr);
 
 	if (p) {
-		if (kprobe_running()) {    /* 异常由kprobes自身触发 */
+		if (kprobe_running()) {    /* 重入，异常由kprobes自身触发 */
 			if (reenter_kprobe(p, regs, kcb))
 				return 1;
 		} else {                   /* 设置单步调试模式 */
-			set_current_kprobe(p, regs, kcb);
-			kcb->kprobe_status = KPROBE_HIT_ACTIVE;
+			set_current_kprobe(p, regs, kcb);       /* 绑定当前kprobe */
+			kcb->kprobe_status = KPROBE_HIT_ACTIVE; /* 设定标识，命中kprobe探测点 */
 
 			/*
 			 * If we have no pre-handler or it returned 0, we
@@ -642,9 +651,11 @@ int kprobe_int3_handler(struct pt_regs *regs)
 			 * more here.
 			 *//* 执行注册的探测句柄 */
 			if (!p->pre_handler || !p->pre_handler(p, regs))
-				setup_singlestep(p, regs, kcb, 0);
+				setup_singlestep(p, regs, kcb, 0);  /* 启动单步执行 */
 			return 1;
 		}
+    /* kprobe可能已经被其他CPU注销了，则执行原始指令即可，因此这里设置regs->ip
+       值为addr并重新开启内核抢占返回 */
 	} else if (*addr != BREAKPOINT_INSTRUCTION) {
 		/*
 		 * The breakpoint instruction was removed right
@@ -658,6 +669,7 @@ int kprobe_int3_handler(struct pt_regs *regs)
 		regs->ip = (unsigned long)addr;
 		preempt_enable_no_resched();
 		return 1;
+    /* 实现jprobe */        
 	} else if (kprobe_running()) {
 		p = __this_cpu_read(current_kprobe);
 		if (p->break_handler && p->break_handler(p, regs)) {
@@ -675,7 +687,7 @@ NOKPROBE_SYMBOL(kprobe_int3_handler);
 /*
  * When a retprobed function returns, this code saves registers and
  * calls trampoline_handler() runs, which calls the kretprobe's handler.
- */
+ *//* kretprobe_trampoline()调用函数 */
 asm(
 	".global kretprobe_trampoline\n"
 	".type kretprobe_trampoline, @function\n"
@@ -776,7 +788,7 @@ __visible __used void *trampoline_handler(struct pt_regs *regs)
 			__this_cpu_write(current_kprobe, &ri->rp->kp);
 			get_kprobe_ctlblk()->kprobe_status = KPROBE_HIT_ACTIVE;
 			ri->ret_addr = correct_ret_addr;
-			ri->rp->handler(ri, regs);
+			ri->rp->handler(ri, regs);        /* 调用用户注册函数 */
 			__this_cpu_write(current_kprobe, NULL);
 		}
 
@@ -1046,12 +1058,14 @@ int kprobe_exceptions_notify(struct notifier_block *self, unsigned long val,
 }
 NOKPROBE_SYMBOL(kprobe_exceptions_notify);
 
+/* jprobe机制对应的kprobe->pre_handler() */
 int setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 {
 	struct jprobe *jp = container_of(p, struct jprobe, kp);
 	unsigned long addr;
 	struct kprobe_ctlblk *kcb = get_kprobe_ctlblk();
 
+    /* 保存现场 */
 	kcb->jprobe_saved_regs = *regs;
 	kcb->jprobe_saved_sp = stack_addr(regs);
 	addr = (unsigned long)(kcb->jprobe_saved_sp);
@@ -1068,6 +1082,7 @@ int setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	__memcpy(kcb->jprobes_stack, (kprobe_opcode_t *)addr, MIN_STACK_SIZE(addr));
 	regs->flags &= ~X86_EFLAGS_IF;
 	trace_hardirqs_off();
+    /* 跳转到用户设定的探针函数 */
 	regs->ip = (unsigned long)(jp->entry);
 
 	/*
@@ -1078,6 +1093,9 @@ int setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 	 * Pause function graph tracing while performing the jprobe function.
 	 */
 	pause_graph_tracing();
+
+    /* 使得kprobe_int3_handler()函数跳过setup_singlestep()调用；从而不触发
+       单步调试；由探针函数的jprobe_return()控制执行流程 */
 	return 1;
 }
 NOKPROBE_SYMBOL(setjmp_pre_handler);
@@ -1095,15 +1113,16 @@ void jprobe_return(void)
 #else
 			"       xchgl   %%ebx,%%esp	\n"
 #endif
-			"       int3			\n"
-			"       .globl jprobe_return_end\n"
-			"       jprobe_return_end:	\n"
-			"       nop			\n"::"b"
+			"       int3			\n"         /* 再次触发int3异常；但地址不再 */
+			"       .globl jprobe_return_end\n" /* 是BREAKPOINT_INSTRUCTION了，*/
+			"       jprobe_return_end:	\n"     /* 所以会进入到kprobe_int3_handler的 */
+			"       nop			\n"::"b"        /* struct kprobe->break_handler() */
 			(kcb->jprobe_saved_sp):"memory");
 }
 NOKPROBE_SYMBOL(jprobe_return);
 NOKPROBE_SYMBOL(jprobe_return_end);
 
+/* jprobe第二次int3触发后(用户设定的探针函数执行之后)，执行的函数 */
 int longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)
 {
 	struct kprobe_ctlblk *kcb = get_kprobe_ctlblk();
@@ -1125,6 +1144,7 @@ int longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)
 			BUG();
 		}
 		/* It's OK to start function graph tracing again */
+        /* 恢复上下文，打开抢占 */
 		unpause_graph_tracing();
 		*regs = kcb->jprobe_saved_regs;
 		__memcpy(saved_sp, kcb->jprobes_stack, MIN_STACK_SIZE(saved_sp));
