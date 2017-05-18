@@ -45,6 +45,7 @@ enum uprobe_filter_ctx {
 	UPROBE_FILTER_MMAP,
 };
 
+/* uprobe对应的处理函数 */
 struct uprobe_consumer {
 	int (*handler)(struct uprobe_consumer *self, struct pt_regs *regs);
 	int (*ret_handler)(struct uprobe_consumer *self,
