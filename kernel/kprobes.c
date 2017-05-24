@@ -2463,15 +2463,18 @@ static const struct file_operations fops_kp = {
 	.llseek =	default_llseek,
 };
 
+/* 暴露到/sys文件系统的接口初始化 */
 static int __init debugfs_kprobe_init(void)
 {
 	struct dentry *dir, *file;
 	unsigned int value = 1;
 
+    /* 创建目录/sys/kernel/debug/kprobes */
 	dir = debugfs_create_dir("kprobes", NULL);
 	if (!dir)
 		return -ENOMEM;
 
+    /* 创建文件list/enabled/blacklist */
 	file = debugfs_create_file("list", 0444, dir, NULL,
 				&debugfs_kprobes_operations);
 	if (!file)

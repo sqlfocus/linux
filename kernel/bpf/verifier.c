@@ -23,8 +23,10 @@
 /* bpf_check() is a static code analyzer that walks eBPF program
  * instruction by instruction and updates register/stack state.
  * All paths of conditional branches are analyzed until 'bpf_exit' insn.
+ * bpf_check()是一个静态代码分析器，逐指令分析ebpf程序，并伴随着寄存器、栈
+ * 状态更新，所有的代码路径或条件分支都将被分析，直到遇到退出指令(bpf_exit)
  *
- * The first pass is depth-first-search to check that the program is a DAG.
+ * The first pass is depth-first-search to check that the program is a DAG
  * It rejects the following programs:
  * - larger than BPF_MAXINSNS insns
  * - if loop is present (detected via back-edge)
@@ -35,20 +37,38 @@
  * analysis is limited to 32k insn, which may be hit even if total number of
  * insn is less then 4K, but there are too many branches that change stack/regs.
  * Number of 'branches to be analyzed' is limited to 1k
+ * 第一遍检测，基于深度优先搜索(depth-first-search)查看程序是否为有向无环
+ * 图(DAG: directed acyclic graph)；以下形式的程序被禁止：
+ *   1. 多余BPF_MAXINSNS指令条数
+ *   2. 存在环路(loop)
+ *   3. 存在不可达的指令(指令集合应该为森林)
+ *   4. 跳转指令跳转范围过大
+ *
+ * 第二遍检测，遍历从第一条指令开始的所有代码路径，分析路径总代码长度被限
+ * 制为32k，因为即使4k的总指令数，如果有过多的分支也可能超标；分支总数被
+ * 限制为1k。
  *
  * On entry to each instruction, each register has a type, and the instruction
  * changes the types of the registers depending on instruction semantics.
  * If instruction is BPF_MOV64_REG(BPF_REG_1, BPF_REG_5), then type of R5 is
  * copied to R1.
+ × 每个寄存器都具有类型，指令可依据语意修改寄存器类型；如BPF_MOV64_REG(BPF_REG_1, BPF_REG_5)
+ × 会将R5的类型复制到R1.
  *
  * All registers are 64-bit.
  * R0 - return register
  * R1-R5 argument passing registers
  * R6-R9 callee saved registers
  * R10 - frame pointer read-only
+ × 所有寄存器都是64-bit：
+ ×   R0     返回寄存器
+ ×   R1~R5  参数寄存器
+ ×   R6~R9  被调用方需要保存的寄存器
+ ×   R10    栈帧寄存器，只读
  *
  * At the start of BPF program the register R1 contains a pointer to bpf_context
  * and has type PTR_TO_CTX.
+ × BPF程序启动时，寄存器R1存储PTR_TO_CTX类型的bpf_context环境指针
  *
  * Verifier tracks arithmetic operations on pointers in case:
  *    BPF_MOV64_REG(BPF_REG_1, BPF_REG_10),
@@ -59,17 +79,27 @@
  * So after 2nd insn, the register R1 has type PTR_TO_STACK
  * (and -20 constant is saved for further stack bounds checking).
  * Meaning that this reg is a pointer to stack plus known immediate constant.
+ × 本示例展示了指针操作：
+ ×     第一条指令将栈帧copy到R1, 第二条指令意图为构建一个指向栈特定变量
+ ×     的指针，执行完毕后，R1寄存器类型为PTR_TO_STACK(-20常数将被存储用
+ ×     于栈边界检测)，值为具体变量的地址。
  *
  * Most of the time the registers have UNKNOWN_VALUE type, which
  * means the register has some value, but it's not a valid pointer.
  * (like pointer plus pointer becomes UNKNOWN_VALUE type)
+ × 大多数时间，寄存器具有UNKNOWN_VALUE类型，这意味着寄存器存储了某值，但
+ × 并不是合理的指针(指针＋指针将产生此类型的值)
  *
  * When verifier sees load or store instructions the type of base register
  * can be: PTR_TO_MAP_VALUE, PTR_TO_CTX, FRAME_PTR. These are three pointer
  * types recognized by check_mem_access() function.
+ × 对于load、store指令，寄存器类型可以为PTR_TO_MAP_VALUE/PTR_TO_CTX/FRAME_PTR,
+ × 此三种类型可被check_mem_access()函数识别
  *
  * PTR_TO_MAP_VALUE means that this register is pointing to 'map element value'
  * and the range of [ptr, ptr + map's value_size) is accessible.
+ × PTR_TO_MAP_VALUE意味着寄存器指向‘map表变量’，并且内存[ptr, ptr + map's value_size)
+ × 是可访问的
  *
  * registers used to pass values to function calls are checked against
  * function argument constraints.
@@ -78,6 +108,9 @@
  * It means that the register type passed to this function must be
  * PTR_TO_STACK and it will be used inside the function as
  * 'pointer to map element key'
+ × 用于传递参数值的寄存器，由函数参数限制做检测。ARG_PTR_TO_MAP_KEY就是此
+ × 类型的，它意味着传递到函数的寄存器类型必须为PTR_TO_STACK，并且在函数内
+ × 部当作指向map表元素的指针使用。
  *
  * For example the argument constraints for bpf_map_lookup_elem():
  *   .ret_type = RET_PTR_TO_MAP_VALUE_OR_NULL,
@@ -100,6 +133,7 @@
  *    [key, key + map->key_size) bytes are valid and were initialized on
  *    the stack of eBPF program.
  * }
+ × 示例1及解释
  *
  * Corresponding eBPF program may look like:
  *    BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),  // after this insn R2 type is FRAME_PTR
@@ -125,6 +159,7 @@
  *
  * After the call R0 is set to return type of the function and registers R1-R5
  * are set to NOT_INIT to indicate that they are no longer readable.
+ × 示例2及解释
  */
 
 /* verifier_state + insn_idx are pushed to stack when branch is encountered */
@@ -139,8 +174,11 @@ struct bpf_verifier_stack_elem {
 	struct bpf_verifier_stack_elem *next;
 };
 
-#define BPF_COMPLEXITY_LIMIT_INSNS	65536
-#define BPF_COMPLEXITY_LIMIT_STACK	1024
+#define BPF_COMPLEXITY_LIMIT_INSNS	65536       /* 遍历所有路径时，指令数上限；
+                                                   虽然ebpf总指令数限制为4096, 
+                                                   但跳转设定不合理，所有路径执
+                                                   行指令数和可能会超过此值 */
+#define BPF_COMPLEXITY_LIMIT_STACK	1024        /* 从第一条指令开始，所有的跳转\条件分支数总和上限 */
 
 struct bpf_call_arg_meta {
 	struct bpf_map *map_ptr;
@@ -1158,6 +1196,8 @@ static void clear_all_pkt_pointers(struct bpf_verifier_env *env)
 	}
 }
 
+/* 根据函数索引enum bpf_func_id，查找通过宏 BPF_CALL_x 定义的函数原型；
+   然后根据函数原型，判断函数调用是否符合要求 */
 static int check_call(struct bpf_verifier_env *env, int func_id)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
@@ -1168,26 +1208,27 @@ static int check_call(struct bpf_verifier_env *env, int func_id)
 	bool changes_data;
 	int i, err;
 
-	/* find function prototype */
 	if (func_id < 0 || func_id >= __BPF_FUNC_MAX_ID) {
 		verbose("invalid func %d\n", func_id);
 		return -EINVAL;
 	}
 
+	/* 查找函数原型，find function prototype */
 	if (env->prog->aux->ops->get_func_proto)
 		fn = env->prog->aux->ops->get_func_proto(func_id);
-
 	if (!fn) {
 		verbose("unknown func %d\n", func_id);
 		return -EINVAL;
 	}
 
-	/* eBPF programs must be GPL compatible to use GPL-ed functions */
+	/* 必须为GPL许可，才能访问对应权限的函数
+       eBPF programs must be GPL compatible to use GPL-ed functions */
 	if (!env->prog->gpl_compatible && fn->gpl_only) {
 		verbose("cannot call GPL only function from proprietary program\n");
 		return -EINVAL;
 	}
 
+    /* 是否改变skb数据？ */
 	changes_data = bpf_helper_changes_skb_data(fn->func);
 
 	memset(&meta, 0, sizeof(meta));
@@ -1195,14 +1236,14 @@ static int check_call(struct bpf_verifier_env *env, int func_id)
 
 	/* We only support one arg being in raw mode at the moment, which
 	 * is sufficient for the helper functions we have right now.
-	 */
+	 *//* 仅支持一个raw模式的参数 */
 	err = check_raw_mode(fn);
 	if (err) {
 		verbose("kernel subsystem misconfigured func %d\n", func_id);
 		return err;
 	}
 
-	/* check args */
+	/* 检查参数类型，check args */
 	err = check_func_arg(env, BPF_REG_1, fn->arg1_type, &meta);
 	if (err)
 		return err;
@@ -1258,6 +1299,7 @@ static int check_call(struct bpf_verifier_env *env, int func_id)
 		return -EINVAL;
 	}
 
+    /* 检查map表是否于对应的函数匹配 */
 	err = check_map_func_compatibility(meta.map_ptr, func_id);
 	if (err)
 		return err;
@@ -2240,7 +2282,7 @@ static int push_insn(int t, int w, int e, struct bpf_verifier_env *env)
 
 /* non-recursive depth-first-search to detect loops in BPF program
  * loop == back-edge in directed graph
- */
+ *//* 深度优先算法，环路检测：算法思路见上面注释(non-recursive DFS pseudo code) */
 static int check_cfg(struct bpf_verifier_env *env)
 {
 	struct bpf_insn *insns = env->prog->insnsi;
@@ -2537,6 +2579,7 @@ static int ext_analyzer_insn_hook(struct bpf_verifier_env *env,
 	return env->analyzer_ops->insn_hook(env, insn_idx, prev_insn_idx);
 }
 
+
 static int do_check(struct bpf_verifier_env *env)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
@@ -2550,6 +2593,7 @@ static int do_check(struct bpf_verifier_env *env)
 	init_reg_state(regs);
 	insn_idx = 0;
 	env->varlen_map_value_access = false;
+    /* 遍历所有ebpf指令 */
 	for (;;) {
 		struct bpf_insn *insn;
 		u8 class;
@@ -2562,12 +2606,12 @@ static int do_check(struct bpf_verifier_env *env)
 		}
 
 		insn = &insns[insn_idx];
-		class = BPF_CLASS(insn->code);
+		class = BPF_CLASS(insn->code);    /* 提取指令类型 */
 
 		if (++insn_processed > BPF_COMPLEXITY_LIMIT_INSNS) {
 			verbose("BPF program is too large. Proccessed %d insn\n",
 				insn_processed);
-			return -E2BIG;
+			return -E2BIG;                /* 所有路径指令数和超过上限 */
 		}
 
 		err = is_state_visited(env, insn_idx);
@@ -2601,11 +2645,11 @@ static int do_check(struct bpf_verifier_env *env)
 			return err;
 
 		if (class == BPF_ALU || class == BPF_ALU64) {
-			err = check_alu_op(env, insn);
+			err = check_alu_op(env, insn);/* BPF_ALU检测 */
 			if (err)
 				return err;
 
-		} else if (class == BPF_LDX) {
+		} else if (class == BPF_LDX) {    /* BPF_LDX检测 */
 			enum bpf_reg_type *prev_src_type, src_reg_type;
 
 			/* check for reserved fields is already done */
@@ -2660,7 +2704,7 @@ static int do_check(struct bpf_verifier_env *env)
 				return -EINVAL;
 			}
 
-		} else if (class == BPF_STX) {
+		} else if (class == BPF_STX) {    /* BPF_STX检测 */
 			enum bpf_reg_type *prev_dst_type, dst_reg_type;
 
 			if (BPF_MODE(insn->code) == BPF_XADD) {
@@ -2700,7 +2744,7 @@ static int do_check(struct bpf_verifier_env *env)
 				return -EINVAL;
 			}
 
-		} else if (class == BPF_ST) {
+		} else if (class == BPF_ST) {     /* BPF_ST检测 */
 			if (BPF_MODE(insn->code) != BPF_MEM ||
 			    insn->src_reg != BPF_REG_0) {
 				verbose("BPF_ST uses reserved fields\n");
@@ -2718,10 +2762,10 @@ static int do_check(struct bpf_verifier_env *env)
 			if (err)
 				return err;
 
-		} else if (class == BPF_JMP) {
+		} else if (class == BPF_JMP) {    /* BPF_JMP检测 */
 			u8 opcode = BPF_OP(insn->code);
 
-			if (opcode == BPF_CALL) {
+			if (opcode == BPF_CALL) {             /* 函数调用 */
 				if (BPF_SRC(insn->code) != BPF_K ||
 				    insn->off != 0 ||
 				    insn->src_reg != BPF_REG_0 ||
@@ -2730,7 +2774,7 @@ static int do_check(struct bpf_verifier_env *env)
 					return -EINVAL;
 				}
 
-				err = check_call(env, insn->imm);
+				err = check_call(env, insn->imm); /* 根据定义的函数原型检查函数调用参数 */
 				if (err)
 					return err;
 
@@ -2783,7 +2827,7 @@ process_bpf_exit:
 				if (err)
 					return err;
 			}
-		} else if (class == BPF_LD) {
+		} else if (class == BPF_LD) {     /* BPF_LD检测 */
 			u8 mode = BPF_MODE(insn->code);
 
 			if (mode == BPF_ABS || mode == BPF_IND) {
@@ -2802,7 +2846,7 @@ process_bpf_exit:
 				return -EINVAL;
 			}
 			reset_reg_range_values(regs, insn->dst_reg);
-		} else {
+		} else {                          /* 其他 */
 			verbose("unknown insn class %d\n", class);
 			return -EINVAL;
 		}
@@ -2830,7 +2874,7 @@ static int check_map_prog_compatibility(struct bpf_map *map,
 
 /* look for pseudo eBPF instructions that access map FDs and
  * replace them with actual map pointers
- */
+ *//* 替换map描述符fd为具体的map指针 */
 static int replace_map_fd_with_map_ptr(struct bpf_verifier_env *env)
 {
 	struct bpf_insn *insn = env->prog->insnsi;
@@ -2871,6 +2915,7 @@ static int replace_map_fd_with_map_ptr(struct bpf_verifier_env *env)
 				return -EINVAL;
 			}
 
+            /* 立即数，即map描述符fd；获取Map指针 */
 			f = fdget(insn->imm);
 			map = __bpf_map_get(f);
 			if (IS_ERR(map)) {
@@ -2885,7 +2930,7 @@ static int replace_map_fd_with_map_ptr(struct bpf_verifier_env *env)
 				return err;
 			}
 
-			/* store map pointer inside BPF_LD_IMM64 instruction */
+			/* 立即数更改为MAP地址，store map pointer inside BPF_LD_IMM64 instruction */
 			insn[0].imm = (u32) (unsigned long) map;
 			insn[1].imm = ((u64) (unsigned long) map) >> 32;
 
@@ -3038,6 +3083,7 @@ static void free_states(struct bpf_verifier_env *env)
 	kfree(env->explored_states);
 }
 
+/* 详细注释见本文件头部 */
 int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 {
 	char __user *log_ubuf = NULL;
@@ -3049,7 +3095,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 
 	/* 'struct bpf_verifier_env' can be global, but since it's not small,
 	 * allocate/free it every time bpf_check() is called
-	 */
+	 *//* 分配内存盛放检测信息 */
 	env = kzalloc(sizeof(struct bpf_verifier_env), GFP_KERNEL);
 	if (!env)
 		return -ENOMEM;
@@ -3064,6 +3110,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 	/* grab the mutex to protect few globals used by verifier */
 	mutex_lock(&bpf_verifier_lock);
 
+    /* 检测用户态日志内存大小 */
 	if (attr->log_level || attr->log_buf || attr->log_size) {
 		/* user requested verbose verifier output
 		 * and supplied buffer to store the verification trace
@@ -3087,6 +3134,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 		log_level = 0;
 	}
 
+    /* 替换map句柄fd为map指针 */
 	ret = replace_map_fd_with_map_ptr(env);
 	if (ret < 0)
 		goto skip_full_check;
@@ -3098,12 +3146,14 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 	if (!env->explored_states)
 		goto skip_full_check;
 
+    /* 第一遍检测，检查是否为DAG(有向无环图) */
 	ret = check_cfg(env);
 	if (ret < 0)
 		goto skip_full_check;
 
 	env->allow_ptr_leaks = capable(CAP_SYS_ADMIN);
 
+    /* 第二遍检测，检测语法语义，寄存器、栈状态，函数参数等；并限制总代码数、分支数 */
 	ret = do_check(env);
 
 skip_full_check:
@@ -3127,6 +3177,7 @@ skip_full_check:
 		goto free_log_buf;
 	}
 
+    /* 记录ebpf程序使用的MAP表到struct bpf_prog->aux->used_maps */
 	if (ret == 0 && env->used_map_cnt) {
 		/* if program passed verifier, update used_maps in bpf_prog_info */
 		env->prog->aux->used_maps = kmalloc_array(env->used_map_cnt,

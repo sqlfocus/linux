@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 	}
 
 	while (1) {
-		get_data(map_fd[1]);
+		get_data(map_fd[1]);            /* 每隔5s打印一次统计结果 */
 		print_hist();
 		sleep(5);
 	}

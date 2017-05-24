@@ -93,9 +93,9 @@ enum bpf_cmd {
 
 enum bpf_map_type {
 	BPF_MAP_TYPE_UNSPEC,
-	BPF_MAP_TYPE_HASH,               /* */
+	BPF_MAP_TYPE_HASH,               /* HASH表 */
 	BPF_MAP_TYPE_ARRAY,              /* 数组式表 */
-	BPF_MAP_TYPE_PROG_ARRAY,         /* */
+	BPF_MAP_TYPE_PROG_ARRAY,         /* ebpf程序 */
 	BPF_MAP_TYPE_PERF_EVENT_ARRAY,   /* */
 	BPF_MAP_TYPE_PERCPU_HASH,        /* */
 	BPF_MAP_TYPE_PERCPU_ARRAY,       /* */
@@ -105,13 +105,13 @@ enum bpf_map_type {
 
 enum bpf_prog_type {
 	BPF_PROG_TYPE_UNSPEC,
-	BPF_PROG_TYPE_SOCKET_FILTER,
-	BPF_PROG_TYPE_KPROBE,
-	BPF_PROG_TYPE_SCHED_CLS,
-	BPF_PROG_TYPE_SCHED_ACT,
-	BPF_PROG_TYPE_TRACEPOINT,
-	BPF_PROG_TYPE_XDP,
-	BPF_PROG_TYPE_PERF_EVENT,
+	BPF_PROG_TYPE_SOCKET_FILTER,     /* */
+	BPF_PROG_TYPE_KPROBE,            /**/
+	BPF_PROG_TYPE_SCHED_CLS,         /**/
+	BPF_PROG_TYPE_SCHED_ACT,         /**/
+	BPF_PROG_TYPE_TRACEPOINT,        /**/
+	BPF_PROG_TYPE_XDP,               /**/
+	BPF_PROG_TYPE_PERF_EVENT,        /**/
 };
 
 #define BPF_PSEUDO_MAP_FD	1
@@ -147,9 +147,11 @@ union bpf_attr {
 		__u32		insn_cnt;
 		__aligned_u64	insns;
 		__aligned_u64	license;
+        
 		__u32		log_level;	/* verbosity level of verifier */
 		__u32		log_size;	/* size of user buffer */
-		__aligned_u64	log_buf;	/* user supplied buffer */
+		__aligned_u64	log_buf;	/* 用于存放bpf_check()结果，user supplied buffer */
+        
 		__u32		kern_version;	/* checked when prog_type=kprobe */
 	};
 
@@ -161,7 +163,8 @@ union bpf_attr {
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
- */
+ *//* ebpf函数索引，为map_perf_test_kern.c等引用；当加载ebpf程序时，由
+      fixup_bpf_calls() 修正为系统函数调用 */
 enum bpf_func_id {
 	BPF_FUNC_unspec,
 	BPF_FUNC_map_lookup_elem, /* void *map_lookup_elem(&map, &key) */

@@ -153,6 +153,7 @@ EFLAGS中的TF标志), 大概的流程:
    : cat /sys/kernel/debug/tracing/trace 
 
 * 代码摘录
+** kprobe模块儿
 本文档摘录内核提供的示例代码[fn:6]，梳理kprobe的处理流程；以期更加清晰理
 解动态内核调试技术。
  - init_kprobes()
@@ -191,6 +192,31 @@ EFLAGS中的TF标志), 大概的流程:
     :   kprobe_debug_handler()
     :     resume_execution()            设置EIP为探测点下一条指令，并且恢复标识
     :     struct kprobe->post_handler() 调用事后处理句柄
+
+** kprobe用户态接口
+ - init_kprobe_trace()
+    : ~/kernel/trace/trace_kprobe.c
+    : 建立kprobe的用户态操控接口
+    :
+    : 流程
+    :   tracefs_create_file()           创建/sys/kernel/debug/tracing/kprobe_events，
+    :                                   以暴露kprobe节点操控接口给用户
+ - probes_write()
+    : ~/kernel/trace/trace_kprobe.c
+    : 添加kprobe探测点
+    :
+    : 流程
+    :   traceprobe_probes_write()
+    :     create_trace_kprobe()
+    :       alloc_trace_kprobe()        分配内存，并设置探针统一入口处理函数，kretprobe_dispatcher/kprobe_dispatcher()
+    :       register_trace_kprobe       注册探针
+ - kprobe_dispatcher()
+    : ~/kernel/trace/trace_kprobe.c
+    : 通过用户态操控接口注册的kprobe探针分发函数入口
+    :
+    : 流程
+    :   kprobe_trace_func()             获取注册的参数
+    :   kprobe_perf_func()              触发ebpf程序
 
 ** jprobe执行流程
 jprobe再kprobe基础上实现

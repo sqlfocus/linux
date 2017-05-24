@@ -290,13 +290,13 @@ struct probe_arg {
 };
 
 struct trace_probe {
-	unsigned int			flags;	/* For TP_FLAG_* */
+	unsigned int			flags;	    /* 标志位，如是否注册、使能等，For TP_FLAG_* */
 	struct trace_event_class	class;
-	struct trace_event_call		call;
+	struct trace_event_call		call;   /* */
 	struct list_head 		files;
 	ssize_t				size;	/* trace entry size */
-	unsigned int			nr_args;
-	struct probe_arg		args[];
+	unsigned int			nr_args;    /* args[]大小 */
+	struct probe_arg		args[];     /* 获取的变量 */
 };
 
 struct event_file_link {

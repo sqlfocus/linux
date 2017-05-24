@@ -464,7 +464,7 @@ EXPORT_SYMBOL_GPL(__bpf_call_base);
  *	@insn: is the array of eBPF instructions
  *
  * Decode and execute eBPF instructions.
- */
+ *//* 在给定环境执行ebpf程序 */
 static unsigned int __bpf_prog_run(void *ctx, const struct bpf_insn *insn)
 {
 	u64 stack[MAX_BPF_STACK / sizeof(u64)];
@@ -913,7 +913,7 @@ load_byte:
 		off = IMM + SRC;
 		goto load_half;
 	LD_IND_B: /* BPF_R0 = *(u8 *) (skb->data + src_reg + imm32) */
-		off = IMM + SRC;
+kprobe_prog_ops		off = IMM + SRC;
 		goto load_byte;
 
 	default_label:
@@ -970,7 +970,7 @@ static int bpf_check_tail_call(const struct bpf_prog *fp)
  */
 struct bpf_prog *bpf_prog_select_runtime(struct bpf_prog *fp, int *err)
 {
-	fp->bpf_func = (void *) __bpf_prog_run;
+	fp->bpf_func = (void *) __bpf_prog_run;   /* 设置ebpf指令的解释执行函数 */
 
 	/* eBPF JITs can rewrite the program in case constant
 	 * blinding is active. However, in case of error during
@@ -978,8 +978,8 @@ struct bpf_prog *bpf_prog_select_runtime(struct bpf_prog *fp, int *err)
 	 * valid program, which in this case would simply not
 	 * be JITed, but falls back to the interpreter.
 	 */
-	fp = bpf_int_jit_compile(fp);
-	bpf_prog_lock_ro(fp);
+	fp = bpf_int_jit_compile(fp);             /* JIT编译 */
+	bpf_prog_lock_ro(fp);                     /* 设置JIT后的结果为只读 */
 
 	/* The tail call compatibility check can only be done at
 	 * this late stage as we need to determine, if we deal

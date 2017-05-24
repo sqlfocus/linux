@@ -30,7 +30,7 @@ int map_fd[MAX_MAPS];               /* 加载elf文件maps段，生成的共享�
 int prog_fd[MAX_PROGS];             /* 加载elf文件段，生成的ebpf程序 */
 int event_fd[MAX_PROGS];            /* */
 int prog_cnt;
-int prog_array_fd = -1;             /* map_fd[]中对应的array类型的MAP */
+int prog_array_fd = -1;             /* map_fd[]中对应的ebpf程序数组 */
 
 static int populate_prog_array(const char *event, int prog_fd)
 {
@@ -47,7 +47,7 @@ static int populate_prog_array(const char *event, int prog_fd)
 /* 加载ebpf程序到内核 */
 static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 {
-    /* 分类 */
+    /* 利用elf不同段名分类 */
 	bool is_socket = strncmp(event, "socket", 6) == 0;
 	bool is_kprobe = strncmp(event, "kprobe/", 7) == 0;
 	bool is_kretprobe = strncmp(event, "kretprobe/", 10) == 0;
@@ -64,6 +64,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	attr.sample_period = 1;
 	attr.wakeup_events = 1;
 
+    /* 设置ebpf程序类别 */
 	if (is_socket) {
 		prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
 	} else if (is_kprobe || is_kretprobe) {
@@ -79,7 +80,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		return -1;
 	}
 
-    /* 加载 */
+    /* 加载ebpf，并记录对应的文件描述符 */
 	fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
 	if (fd < 0) {
 		printf("bpf_prog_load() err=%d\n%s", errno, bpf_log_buf);
@@ -87,10 +88,12 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	}
 	prog_fd[prog_cnt++] = fd;
 
+    /* xdp及perf event类型程序，提前返回 */
 	if (is_xdp || is_perf_event)
 		return 0;
 
-	if (is_socket) {
+    /* 其他类型ebpf程序，需要设置相关内核参数，启动相关功能 */
+	if (is_socket) {                    /* socket相关，ebpf程序数组，参考sockex3_*.c */
 		event += 6;
 		if (*event != '/')
 			return 0;
@@ -102,7 +105,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		return populate_prog_array(event, fd);
 	}
 
-	if (is_kprobe || is_kretprobe) {
+	if (is_kprobe || is_kretprobe) {    /* kprobe */
 		if (is_kprobe)
 			event += 7;
 		else
@@ -116,6 +119,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		if (isdigit(*event))
 			return populate_prog_array(event, fd);
 
+        /* 插入kprobe探针 */
 		snprintf(buf, sizeof(buf),
 			 "echo '%c:%s %s' >> /sys/kernel/debug/tracing/kprobe_events",
 			 is_kprobe ? 'p' : 'r', event, event);
@@ -130,7 +134,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		strcat(buf, "events/kprobes/");
 		strcat(buf, event);
 		strcat(buf, "/id");
-	} else if (is_tracepoint) {
+	} else if (is_tracepoint) {         /* tracepoint */
 		event += 11;
 
 		if (*event == 0) {
@@ -143,6 +147,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		strcat(buf, "/id");
 	}
 
+    /* 获取probe事件ID */
 	efd = open(buf, O_RDONLY, 0);
 	if (efd < 0) {
 		printf("failed to open event %s\n", event);
@@ -161,7 +166,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	id = atoi(buf);
 	attr.config = id;
 
-    /* perf事件 */
+    /* 设置perf消息输出, 并挂接ebpf程序 */
 	efd = perf_event_open(&attr, -1/*pid*/, 0/*cpu*/, -1/*group_fd*/, 0);
 	if (efd < 0) {
 		printf("event %d fd %d err %s\n", id, efd, strerror(errno));
@@ -174,7 +179,7 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	return 0;
 }
 
-/* 根据elf的map section，加载ebpf的共享内存表MAP */
+/* 根据elf的"maps"段section，加载ebpf的共享内存表MAP */
 static int load_maps(struct bpf_map_def *maps, int len)
 {
 	int i;
@@ -198,22 +203,27 @@ static int load_maps(struct bpf_map_def *maps, int len)
 	return 0;
 }
 
+/* 获取elf段名、段头及段数据 */
 static int get_sec(Elf *elf, int i, GElf_Ehdr *ehdr, char **shname,
 		   GElf_Shdr *shdr, Elf_Data **data)
 {
 	Elf_Scn *scn;
 
+    /* 获取段信息(section descriptor) */
 	scn = elf_getscn(elf, i);
 	if (!scn)
 		return 1;
 
+    /* 获取section header */
 	if (gelf_getshdr(scn, shdr) != shdr)
 		return 2;
 
+    /* 获取section名；ehdr->e_shstrndx为段名所在段的索引；shdr->sh_name为偏移 */
 	*shname = elf_strptr(elf, ehdr->e_shstrndx, shdr->sh_name);
 	if (!*shname || !shdr->sh_size)
 		return 3;
 
+    /* 获取段数据 */
 	*data = elf_getdata(scn, 0);
 	if (!*data || elf_getdata(scn, *data) != NULL)
 		return 4;
@@ -261,6 +271,8 @@ int load_bpf_file(char *path)
 	Elf_Data *data, *data_prog, *symbols = NULL;
 	char *shname, *shname_prog;
 
+    /* 协调ELF库和本应用进程版本号，
+       coordinate ELF library and application versions */
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		return 1;
 
@@ -268,12 +280,17 @@ int load_bpf_file(char *path)
 	if (fd < 0)
 		return 1;
 
-    /* 开始解析传入的elf文件 */
+    /* 开始解析传入的elf文件: 检测elf文件内容，分配新的ELF描述结构，并
+       准备处理整个ELF文件 */
 	elf = elf_begin(fd, ELF_C_READ, NULL);
 	if (!elf)
 		return 1;
 
-    /* 获取elf头 */
+    /* gelf_*是generic, ELF class-independent API for manipulating ELF
+       object files； provides a single, common interface for handling 
+       32–bit and 64–bit ELF format object files；is translation layer
+       between the application and the class-dependent parts of the ELF
+       library.   获取elf头 */
 	if (gelf_getehdr(elf, &ehdr) != &ehdr)
 		return 1;
 
@@ -307,7 +324,7 @@ int load_bpf_file(char *path)
 			processed_sec[i] = true;
 			if (load_maps(data->d_buf, data->d_size))
 				return 1;
-		} else if (shdr.sh_type == SHT_SYMTAB) {
+		} else if (shdr.sh_type == SHT_SYMTAB) {  /* 符号表 */
 			symbols = data;
 		}
 	}
@@ -331,7 +348,7 @@ int load_bpf_file(char *path)
 			processed_sec[i] = true;
 
 			if (parse_relo_and_apply(data, symbols, &shdr, insns))
-				continue;
+				continue;                         /* 符号重定向 */
 
 			if (memcmp(shname_prog, "kprobe/", 7) == 0 ||
 			    memcmp(shname_prog, "kretprobe/", 10) == 0 ||
@@ -340,7 +357,7 @@ int load_bpf_file(char *path)
 			    memcmp(shname_prog, "perf_event", 10) == 0 ||
 			    memcmp(shname_prog, "socket", 6) == 0)
 				load_and_attach(shname_prog, insns, data_prog->d_size);
-		}
+		}                                         /* 加载编译后的ebpf */
 	}
 
 	/* 加载不需重定向的程序，load programs that don't use maps */

@@ -242,6 +242,175 @@ netfilter
 * cls_bpf
 qdisc layer
 
+* perf
+ab
+
+* 关键宏
+** BPF_CALL_0
+ #+BEGIN_EXAMPLE
+ BPF_CALL_0(bpf_get_current_pid_tgid)
+ {
+   struct task_struct *task = current;
+   if (unlikely(!task))
+     return -EINVAL;
+   return (u64) task->tgid << 32 | task->pid;
+ }
+
+ const struct bpf_func_proto bpf_get_current_pid_tgid_proto = {
+   .func      = bpf_get_current_pid_tgid,
+   .gpl_only  = false,
+   .ret_type  = RET_INTEGER,
+ };
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ BPF_CALL_0()宏展开，~/include/linux/filter.h
+ 
+ ==>
+   BPF_CALL_x(0, bpf_get_current_pid_tgid)
+
+ ==>
+   static __always_inline u64 ____bpf_get_current_pid_tgid(__BPF_MAP(0, __BPF_DECL_ARGS, __BPF_V));
+   u64 bpf_get_current_pid_tgid(__BPF_REG(0, __BPF_DECL_REGS, __BPF_N));
+
+   u64 bpf_get_current_pid_tgid(__BPF_REG(0, __BPF_DECL_REGS, __BPF_N))
+   {
+       return ____bpf_get_current_pid_tgid(__BPF_MAP(0,__BPF_CAST,__BPF_N));
+   }
+   static __always_inline u64 ____bpf_get_current_pid_tgid(__BPF_MAP(0, __BPF_DECL_ARGS, __BPF_V)) {
+       struct task_struct *task = current;
+       if (unlikely(!task))
+           return -EINVAL;
+       return (u64) task->tgid << 32 | task->pid;
+   }
+
+ ==>
+   static __always_inline u64 ____bpf_get_current_pid_tgid(__BPF_MAP_0(__BPF_DECL_ARGS, __BPF_V));
+   u64 bpf_get_current_pid_tgid(__BPF_REG_0(__BPF_DECL_REGS, __BPF_N));
+
+   u64 bpf_get_current_pid_tgid(__BPF_REG_0(__BPF_DECL_REGS, __BPF_N))
+   {
+       return ____bpf_get_current_pid_tgid(__BPF_MAP_0(__BPF_CAST,__BPF_N));
+   }
+   static __always_inline u64 ____bpf_get_current_pid_tgid(__BPF_MAP_0(__BPF_DECL_ARGS, __BPF_V)) {
+       struct task_struct *task = current;
+       if (unlikely(!task))
+           return -EINVAL;
+       return (u64) task->tgid << 32 | task->pid;
+   }
+
+ ==>
+   static __always_inline u64 ____bpf_get_current_pid_tgid(void);
+   u64 bpf_get_current_pid_tgid(__BPF_PAD(5));
+
+   u64 bpf_get_current_pid_tgid(__BPF_PAD(5))
+   {
+       return ____bpf_get_current_pid_tgid();
+   }
+   static __always_inline u64 ____bpf_get_current_pid_tgid(void) {
+       struct task_struct *task = current;
+       if (unlikely(!task))
+           return -EINVAL;
+       return (u64) task->tgid << 32 | task->pid;
+   }
+
+ ==>
+   static __always_inline u64 ____bpf_get_current_pid_tgid(void);
+   u64 bpf_get_current_pid_tgid(u64 __ur_1, u64 __ur_2, u64 __ur_3, u64 __ur_4, u64 __ur_5);
+
+   u64 bpf_get_current_pid_tgid(u64 __ur_1, u64 __ur_2, u64 __ur_3, u64 __ur_4, u64 __ur_5)
+   {
+       return ____bpf_get_current_pid_tgid();
+   }
+   static __always_inline u64 ____bpf_get_current_pid_tgid(void) {
+       struct task_struct *task = current;
+       if (unlikely(!task))
+           return -EINVAL;
+       return (u64) task->tgid << 32 | task->pid;
+   }
+ #+END_EXAMPLE
+
+** SEC
+默认情况下，编译器将生成的对象放置在text、data、bss等段；但特殊情况下，
+需要将对象放置到指定的段，以达成某些特定目的；属性section就是为此服务(
+一般利用section属性修饰全局变量，而非局部变量)。
+
+而used属性，则会为变量附加静态存储属性(整个程序运行期间都存在, 全局静态
+变量在声明它的文件之外是不可见, 类似于static???)
+ #+BEGIN_EXAMPLE
+ ~/samples/bpf/bpf_helpers.h
+ #define SEC(NAME) __attribute__((section(NAME), used))
+ #+END_EXAMPLE
+
+* ebpf指令内如何函数调用？
+ #+BEGIN_EXAMPLE
+ ~/samples/bpf/bpf_helpers.h
+
+ 定义的帮助函数，被C语言版的ebpf程序(~/samples/bpf/map_perf_test_kern.c)引用，
+ 当利用llvm编译后，函数调用被编译成BPF_CALL指令，并且指令的imm为此索引值
+ static void *(*bpf_map_lookup_elem)(void *map, void *key) =
+	(void *) BPF_FUNC_map_lookup_elem;
+ static int (*bpf_map_update_elem)(void *map, void *key, void *value,
+				  unsigned long long flags) =
+	(void *) BPF_FUNC_map_update_elem;
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ BPF_CALL指令的imm字段的值，用于检索内核ebpf函数；当加载ebpf程序时，由
+ fixup_bpf_calls() 修正为真正的内核ebpf函数地址偏移。
+
+ enum bpf_func_id {                 ~/include/uapi/linux/bpf.h
+   ...
+   BPF_FUNC_map_lookup_elem,
+   BPF_FUNC_map_update_elem,
+   ...
+ };
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 以~/samples/bpf/map_perf_test_user.c为例，展示ebpf函数调用流程的展开过程
+
+ -load_bpf_file()                           加载ebpf程序，~/samples/bpf/map_perf_test_user.c
+   -load_and_attach()
+     -bpf_prog_load()
+       -syscall(__NR_bpf, BPF_PROG_LOAD, ,)
+       -->SYSCALL_DEFINE3(bpf)              系统调用sys_bpf(), ~/kernel/bpf/syscall.c
+         -bpf_prog_load()
+           -find_prog_type()
+           -bpf_check()                     验证函数调用参数，~/kernel/bpf/verifier.c
+           -fixup_bpf_calls()               修正索引id为真实函数地址偏移
+           -bpf_prog_select_runtime()       JIT编译
+           -bpf_prog_new_fd()               关联ebpf程序为具体的文件fd
+ #+END_EXAMPLE
+
+* ebpf程序如何挂接到内核执行点？
+ #+BEGIN_EXAMPLE
+ kprobe/tracepoint/
+
+ -load_bpf_file()                           ~/samples/bpf/map_perf_test_user.c
+   -load_and_attach()                       ~/samples/bpf/bpf_load.c
+     -bpf_prog_load()                       加载ebpf程序到内核，并返回对应的fd
+     -system()                              插入kprobe探针, ~/kernel/trace/trace_kprobe.c
+       -probes_write()
+         -register_trace_kprobe()
+     -open/read()                           获取对应的perf event事件efd
+     -perf_event_open()
+     -ioctl(,PERF_EVENT_IOC_ENABLE,)        使能探针
+     -ioctl(,PERF_EVENT_IOC_SET_BPF,)       关联加载的ebpf程序
+       -perf_ioctl()
+         -_perf_ioctl()                     ~/kernel/events/core.c
+           -perf_event_set_bpf_prog()
+             -赋值struct perf_event->tp_event->prog
+
+ -do_int3()                                 INT3中断入口，~/arch/x86/kernel/traps.c
+   -kprobe_int3_handler()
+     -struct kprobe->pre_handler()
+     -->kprobe_dispatcher()
+       -kprobe_perf_func()
+         -trace_call_bpf()
+           -BPF_PROG_RUN()                  ~/kernel/trace/bpf_trace.c
+ #+END_EXAMPLE
+
 * 示例代码阅读
  - TCP/UDP/ICMP报文统计计数， ~samples/bpf/sock_example.c~
     : bpf_create_map()
@@ -263,6 +432,8 @@ qdisc layer
     : bpf_lookup_elem()
  - 持久化共享表、ebpf程序， ~samples/bpf/fds_example.c~
     : 具体说明参考bpf_obj_pin/bpf_obj_get()函数(~/samples/bpf/libbpf.h)
+ - EBPF对kprobe的支持， ~samples/bpf/map_perf_test_kern.c~
+    : 测试ebpf+kprobe在内存是否预先分配的情况下，对系统调用的压力
 
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf
@@ -274,6 +445,7 @@ qdisc layer
  - man tc
  - ~/kernel/bpf/
  - ~/tools/lib/bpf/
+ - kprobe.org
 
 
 

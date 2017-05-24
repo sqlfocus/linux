@@ -177,7 +177,7 @@ enum trace_reg {
 struct trace_event_call;
 
 struct trace_event_class {
-	const char		*system;
+	const char		*system;            /* kprobe探针的组名 */
 	void			*probe;
 #ifdef CONFIG_PERF_EVENTS
 	void			*perf_probe;
@@ -247,9 +247,9 @@ enum {
 
 struct trace_event_call {
 	struct list_head	list;
-	struct trace_event_class *class;
+	struct trace_event_class *class;   /* 对应的组描述结构 */
 	union {
-		char			*name;
+		char			*name;         /* 对应kprobe探针的事件名 */
 		/* Set TRACE_EVENT_FL_TRACEPOINT flag when using "tp" */
 		struct tracepoint	*tp;
 	};
@@ -272,7 +272,7 @@ struct trace_event_call {
 #ifdef CONFIG_PERF_EVENTS
 	int				perf_refcount;
 	struct hlist_head __percpu	*perf_events;
-	struct bpf_prog			*prog;
+	struct bpf_prog			*prog;      /* 挂接到此的ebpf程序 */
 
 	int	(*perf_perm)(struct trace_event_call *,
 			     struct perf_event *);

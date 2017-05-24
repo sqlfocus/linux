@@ -1,0 +1,20 @@
+#+TITLE: 简介perf event
+#+AUTHOR: sqlfocus
+
+
+本文档简介perf event的实现原理，以加强对ebpf程序的理解。
+
+* perf
+
+* 参考
+[fn:1] ~/tools/perf/design.txt
+[fn:2] man perf_event_open
+
+
+
+
+
+
+
+
+
