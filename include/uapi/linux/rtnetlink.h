@@ -19,7 +19,7 @@
  ****/
 
 /* Types of messages */
-
+/* NETLINK_ROUTE类型的netlink支持的消息类型 */
 enum {
 	RTM_BASE	= 16,
 #define RTM_BASE	RTM_BASE
@@ -476,13 +476,12 @@ struct rtgenmsg {
 /* struct ifinfomsg
  * passes link level specific information, not dependent
  * on network protocol.
- */
-
+ *//* 创建，删除或者获取网络设备的信息 */
 struct ifinfomsg {
-	unsigned char	ifi_family;
+	unsigned char	ifi_family; /* 接口地址类型，如AF_INET6 */
 	unsigned char	__ifi_pad;
-	unsigned short	ifi_type;		/* ARPHRD_* */
-	int		ifi_index;		/* Link index	*/
+	unsigned short	ifi_type;   /* ARPHRD_*, 如 ARPHRD_EHTER */
+	int		ifi_index;		    /* 接口ID号，跟名字无关，Link index	*/
 	unsigned	ifi_flags;		/* IFF_* flags	*/
 	unsigned	ifi_change;		/* IFF_* change mask */
 };

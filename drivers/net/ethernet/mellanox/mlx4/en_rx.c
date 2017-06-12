@@ -884,7 +884,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 
 		/* A bpf program gets first chance to drop the packet. It may
 		 * read bytes but not past the end of the frag.
-		 */
+		 *//* 驱动中XDP调用ebpf的入口，处在报文处理的最前边 */
 		if (xdp_prog) {
 			struct xdp_buff xdp;
 			dma_addr_t dma;
@@ -899,11 +899,11 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 							frags[0].page_offset;
 			xdp.data_end = xdp.data + length;
 
-			act = bpf_prog_run_xdp(xdp_prog, &xdp);
+			act = bpf_prog_run_xdp(xdp_prog, &xdp);   /* xdp类型的ebpf */
 			switch (act) {
-			case XDP_PASS:
+			case XDP_PASS:  /* 继续后续处理 */
 				break;
-			case XDP_TX:
+			case XDP_TX:    /* 直接通过网卡发送出去 */
 				if (likely(!mlx4_en_xmit_frame(frags, dev,
 							length, tx_index,
 							&doorbell_pending)))
@@ -912,7 +912,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 			default:
 				bpf_warn_invalid_xdp_action(act);
 			case XDP_ABORTED:
-			case XDP_DROP:
+			case XDP_DROP:  /* 丢包 */
 xdp_drop:
 				if (likely(mlx4_en_rx_recycle(ring, frags)))
 					goto consumed;

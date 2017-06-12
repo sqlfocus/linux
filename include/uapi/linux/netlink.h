@@ -109,6 +109,7 @@ struct nlmsghdr {      /* netlink消息头 */
 #define NLMSG_DONE		0x3	/* End of a dump	*/
 #define NLMSG_OVERRUN		0x4	/* Data lost		*/
 
+/* 各netlink模块儿定义的消息类型最小值，小于此值为保留的控制消息 */
 #define NLMSG_MIN_TYPE		0x10	/* < 0x10: reserved control messages */
 
 struct nlmsgerr {
@@ -182,7 +183,7 @@ enum {
 
 struct nlattr {
 	__u16           nla_len;
-	__u16           nla_type;
+	__u16           nla_type;  /* NLA_ */
 };
 
 /*

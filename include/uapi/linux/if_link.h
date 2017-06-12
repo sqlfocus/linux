@@ -103,7 +103,7 @@ struct rtnl_link_ifmap {
  */
 
 enum {
-	IFLA_UNSPEC,
+	IFLA_UNSPEC,       /* 0 */
 	IFLA_ADDRESS,
 	IFLA_BROADCAST,
 	IFLA_IFNAME,
@@ -115,7 +115,7 @@ enum {
 #define IFLA_COST IFLA_COST
 	IFLA_PRIORITY,
 #define IFLA_PRIORITY IFLA_PRIORITY
-	IFLA_MASTER,
+	IFLA_MASTER,       /* 10 */
 #define IFLA_MASTER IFLA_MASTER
 	IFLA_WIRELESS,		/* Wireless Extension event - see wireless.h */
 #define IFLA_WIRELESS IFLA_WIRELESS
@@ -132,7 +132,7 @@ enum {
 	IFLA_LINKINFO,
 #define IFLA_LINKINFO IFLA_LINKINFO
 	IFLA_NET_NS_PID,
-	IFLA_IFALIAS,
+	IFLA_IFALIAS,      /* 20 */
 	IFLA_NUM_VF,		/* Number of VFs if device is SR-IOV PF */
 	IFLA_VFINFO_LIST,
 	IFLA_STATS64,
@@ -142,7 +142,7 @@ enum {
 	IFLA_GROUP,		/* Group the device belongs to */
 	IFLA_NET_NS_FD,
 	IFLA_EXT_MASK,		/* Extended info mask, VFs, etc */
-	IFLA_PROMISCUITY,	/* Promiscuity count: > 0 means acts PROMISC */
+	IFLA_PROMISCUITY,  /* 30 *//* Promiscuity count: > 0 means acts PROMISC */
 #define IFLA_PROMISCUITY IFLA_PROMISCUITY
 	IFLA_NUM_TX_QUEUES,
 	IFLA_NUM_RX_QUEUES,
@@ -153,10 +153,10 @@ enum {
 	IFLA_LINK_NETNSID,
 	IFLA_PHYS_PORT_NAME,
 	IFLA_PROTO_DOWN,
-	IFLA_GSO_MAX_SEGS,
+	IFLA_GSO_MAX_SEGS,   /* 40 */
 	IFLA_GSO_MAX_SIZE,
 	IFLA_PAD,
-	IFLA_XDP,
+	IFLA_XDP,            /* 43: XDP属性 */
 	__IFLA_MAX
 };
 
@@ -876,7 +876,7 @@ enum {
 
 enum {
 	IFLA_XDP_UNSPEC,
-	IFLA_XDP_FD,
+	IFLA_XDP_FD,        /* 传递ebpf fd */
 	IFLA_XDP_ATTACHED,
 	__IFLA_XDP_MAX,
 };

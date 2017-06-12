@@ -435,7 +435,7 @@ ab
  - EBPF对kprobe的支持， ~samples/bpf/map_perf_test_kern.c~
     : 测试ebpf+kprobe在内存是否预先分配的情况下，对系统调用的压力
  - XDP, ~samples/bpf/xdp*~
-    : 
+    : 在网络驱动层面处理报文，以获取更高的效率
 
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf
@@ -448,6 +448,7 @@ ab
  - ~/kernel/bpf/
  - ~/tools/lib/bpf/
  - kprobe.org
+ - netlink.org
 
 
 

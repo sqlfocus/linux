@@ -6656,7 +6656,7 @@ EXPORT_SYMBOL(dev_change_proto_down);
  *	@fd: new program fd or negative value to clear
  *
  *	Set or clear a bpf program for a device
- */
+ *//* 为网络设备设置、清除ebpf过滤程序 */
 int dev_change_xdp_fd(struct net_device *dev, int fd)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
@@ -6666,7 +6666,7 @@ int dev_change_xdp_fd(struct net_device *dev, int fd)
 
 	if (!ops->ndo_xdp)
 		return -EOPNOTSUPP;
-	if (fd >= 0) {
+	if (fd >= 0) {           /* 获取xdp类型的ebpf */
 		prog = bpf_prog_get_type(fd, BPF_PROG_TYPE_XDP);
 		if (IS_ERR(prog))
 			return PTR_ERR(prog);
@@ -6675,7 +6675,7 @@ int dev_change_xdp_fd(struct net_device *dev, int fd)
 	xdp.command = XDP_SETUP_PROG;
 	xdp.prog = prog;
 	err = ops->ndo_xdp(dev, &xdp);
-	if (err < 0 && prog)
+	if (err < 0 && prog)     /* 挂接ebpf程序 */
 		bpf_prog_put(prog);
 
 	return err;

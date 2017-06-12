@@ -524,17 +524,17 @@ struct bpf_tunnel_key {
  * A valid XDP program must return one of these defined values. All other
  * return codes are reserved for future use. Unknown return codes will result
  * in packet drop.
- */
+ *//* XDP动作类型 */
 enum xdp_action {
-	XDP_ABORTED = 0,
-	XDP_DROP,
-	XDP_PASS,
-	XDP_TX,
+	XDP_ABORTED = 0,  /* 同XDP_DROP */
+	XDP_DROP,         /* 丢弃报文 */
+	XDP_PASS,         /* 继续后续流程 */
+	XDP_TX,           /* 直接转发报文 */
 };
 
 /* user accessible metadata for XDP packet hook
  * new fields must be added to the end of this structure
- */
+ *//* 对应XDP处理函数的入口参数 */
 struct xdp_md {
 	__u32 data;
 	__u32 data_end;

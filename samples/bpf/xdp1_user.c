@@ -18,6 +18,7 @@
 #include "bpf_load.h"
 #include "libbpf.h"
 
+/* 绑定ebpf过滤程序到指定的接口 */
 static int set_link_xdp_fd(int ifindex, int fd)
 {
 	struct sockaddr_nl sa;
@@ -25,8 +26,8 @@ static int set_link_xdp_fd(int ifindex, int fd)
 	char buf[4096];
 	struct nlattr *nla, *nla_xdp;
 	struct {
-		struct nlmsghdr  nh;
-		struct ifinfomsg ifinfo;
+		struct nlmsghdr  nh;          /* netlink消息头 */
+		struct ifinfomsg ifinfo;      /* 网络设备信息结构 */
 		char             attrbuf[64];
 	} req;
 	struct nlmsghdr *nh;
@@ -35,17 +36,22 @@ static int set_link_xdp_fd(int ifindex, int fd)
 	memset(&sa, 0, sizeof(sa));
 	sa.nl_family = AF_NETLINK;
 
+    /* 构建netlink插口，实现模块儿参考 ~/net/core/rtnetlink.c, 接收函数 rtnetlink_rcv() */
 	sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if (sock < 0) {
 		printf("open netlink socket: %s\n", strerror(errno));
 		return -1;
 	}
-
+    /* 绑定源地址，默认利用进程PID做监听端口 */
 	if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
 		printf("bind to netlink: %s\n", strerror(errno));
 		goto cleanup;
 	}
 
+    /* 构建消息 */
+    /* 消息在内核中的处理流程： rtnetlink_rcv()->rtnetlink_rcv_msg()->rtnl_setlink()
+                                ->do_setlink()->dev_change_xdp_fd()
+                                ->struct net_device_ops->ndo_xdp() */
 	memset(&req, 0, sizeof(req));
 	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -66,11 +72,13 @@ static int set_link_xdp_fd(int ifindex, int fd)
 
 	req.nh.nlmsg_len += NLA_ALIGN(nla->nla_len);
 
+    /* 发送 */
 	if (send(sock, &req, req.nh.nlmsg_len, 0) < 0) {
 		printf("send to netlink: %s\n", strerror(errno));
 		goto cleanup;
 	}
 
+    /* 接收应答 */
 	len = recv(sock, buf, sizeof(buf), 0);
 	if (len < 0) {
 		printf("recv from netlink: %s\n", strerror(errno));
@@ -117,11 +125,11 @@ static void int_exit(int sig)
 }
 
 /* simple per-protocol drop counter
- */
+ *//* 输出统计结果 */
 static void poll_stats(int interval)
 {
 	unsigned int nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
-	const unsigned int nr_keys = 256;
+	const unsigned int nr_keys = 256;     /* IP支持的协议上限 */
 	__u64 values[nr_cpus], prev[nr_keys][nr_cpus];
 	__u32 key;
 	int i;
@@ -135,7 +143,7 @@ static void poll_stats(int interval)
 			__u64 sum = 0;
 
 			assert(bpf_lookup_elem(map_fd[0], &key, values) == 0);
-			for (i = 0; i < nr_cpus; i++)
+			for (i = 0; i < nr_cpus; i++) /* 输出每个协议的报文统计 */
 				sum += (values[i] - prev[key][i]);
 			if (sum)
 				printf("proto %u: %10llu pkt/s\n",
