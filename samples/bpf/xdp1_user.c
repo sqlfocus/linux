@@ -155,26 +155,29 @@ int main(int ac, char **argv)
 		printf("usage: %s IFINDEX\n", argv[0]);
 		return 1;
 	}
-
+    /* 必须指定一个参数，接口索引ID；可以利用ip link获取，第一列数字 */
 	ifindex = strtoul(argv[1], NULL, 0);
 
+    /* 加载ebpf程序 */
 	if (load_bpf_file(filename)) {
 		printf("%s", bpf_log_buf);
 		return 1;
 	}
 
+    /* 设置中断信号处理函数 */
 	if (!prog_fd[0]) {
 		printf("load_bpf_file: %s\n", strerror(errno));
 		return 1;
 	}
-
 	signal(SIGINT, int_exit);
 
+    /* 绑定ebpf程序到netlink框架 */
 	if (set_link_xdp_fd(ifindex, prog_fd[0]) < 0) {
 		printf("link set xdp fd failed\n");
 		return 1;
 	}
 
+    /* 打印丢包输出统计 */
 	poll_stats(2);
 
 	return 0;

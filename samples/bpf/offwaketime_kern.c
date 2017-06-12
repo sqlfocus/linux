@@ -41,6 +41,7 @@ struct wokeby_t {
 	u32 ret;
 };
 
+/* 唤醒记录，键被唤醒进程的PID，值被切换出去的进程名，及返回值 */
 struct bpf_map_def SEC("maps") wokeby = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(u32),
@@ -60,15 +61,19 @@ struct bpf_map_def SEC("maps") stackmap = {
 SEC("kprobe/try_to_wake_up")
 int waker(struct pt_regs *ctx)
 {
+    /* 寄存器传参 */
 	struct task_struct *p = (void *) PT_REGS_PARM1(ctx);
 	struct wokeby_t woke;
 	u32 pid;
 
+    /* 获取待唤醒的进程PID */
 	pid = _(p->pid);
 
+    /* 获取当前进程名 */
 	bpf_get_current_comm(&woke.name, sizeof(woke.name));
 	woke.ret = bpf_get_stackid(ctx, &stackmap, STACKID_FLAGS);
 
+    /* 更新表 */
 	bpf_map_update_elem(&wokeby, &pid, &woke, BPF_ANY);
 	return 0;
 }

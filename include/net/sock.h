@@ -343,7 +343,7 @@ struct sock {
 #define sk_rxhash		__sk_common.skc_rxhash
 
 	socket_lock_t		sk_lock;
-	struct sk_buff_head	sk_receive_queue;
+	struct sk_buff_head	sk_receive_queue;                      /* skb接收队列 */
 	/*
 	 * The backlog queue is special, it is always used with
 	 * the per-socket spinlock held and requires low latency
@@ -394,7 +394,7 @@ struct sock {
 				sk_no_check_tx : 1,
 				sk_no_check_rx : 1,
 				sk_userlocks : 4,
-                sk_protocol  : 8,               /* 如IPPROTO_TCP */
+                sk_protocol  : 8,               /* 如 IPPROTO_TCP, NETLINK_NETFILTER */
 				sk_type      : 16;
 #define SK_PROTOCOL_MAX U8_MAX
 	kmemcheck_bitfield_end(flags);
@@ -440,7 +440,7 @@ struct sock {
 	struct sock_cgroup_data	sk_cgrp_data;
 	struct mem_cgroup	*sk_memcg;
 	void			(*sk_state_change)(struct sock *sk);
-	void			(*sk_data_ready)(struct sock *sk);
+	void			(*sk_data_ready)(struct sock *sk);    /* 收到数据 */
 	void			(*sk_write_space)(struct sock *sk);
 	void			(*sk_error_report)(struct sock *sk);
 	int			(*sk_backlog_rcv)(struct sock *sk,

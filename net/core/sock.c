@@ -2349,13 +2349,14 @@ static void sock_def_error_report(struct sock *sk)
 	rcu_read_unlock();
 }
 
+/* 当用户态插口收到数据后，调用此函数以唤醒等待的用户进程 */
 static void sock_def_readable(struct sock *sk)
 {
 	struct socket_wq *wq;
 
 	rcu_read_lock();
 	wq = rcu_dereference(sk->sk_wq);
-	if (skwq_has_sleeper(wq))
+	if (skwq_has_sleeper(wq))         /* 唤醒 */
 		wake_up_interruptible_sync_poll(&wq->wait, POLLIN | POLLPRI |
 						POLLRDNORM | POLLRDBAND);
 	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);

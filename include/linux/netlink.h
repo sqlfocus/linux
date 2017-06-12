@@ -42,17 +42,20 @@ extern void netlink_table_ungrab(void);
 #define NL_CFG_F_NONROOT_RECV	(1 << 0)
 #define NL_CFG_F_NONROOT_SEND	(1 << 1)
 
-/* optional Netlink kernel configuration parameters */
+/* 创建netlink内核部分的配置参数，
+   optional Netlink kernel configuration parameters */
 struct netlink_kernel_cfg {
-	unsigned int	groups;
-	unsigned int	flags;
+	unsigned int	groups;           /* 支持的多播组个数 */
+	unsigned int	flags;            /* 标识 */
 	void		(*input)(struct sk_buff *skb);
+                                      /* 接收客户端报文的回调函数 */
 	struct mutex	*cb_mutex;
 	int		(*bind)(struct net *net, int group);
 	void		(*unbind)(struct net *net, int group);
 	bool		(*compare)(struct net *net, struct sock *sk);
 };
 
+/* 在模块儿中调用，以实现具体的netlink协议，如 NETLINK_NETFILTER */
 extern struct sock *__netlink_kernel_create(struct net *net, int unit,
 					    struct module *module,
 					    struct netlink_kernel_cfg *cfg);

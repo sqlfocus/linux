@@ -5,11 +5,13 @@
 #include <linux/socket.h> /* for __kernel_sa_family_t */
 #include <linux/types.h>
 
-#define NETLINK_ROUTE		0	/* Routing/device hook				*/
-#define NETLINK_UNUSED		1	/* Unused number				*/
-#define NETLINK_USERSOCK	2	/* Reserved for user mode socket protocols 	*/
-#define NETLINK_FIREWALL	3	/* Unused number, formerly ip_queue		*/
-#define NETLINK_SOCK_DIAG	4	/* socket monitoring				*/
+/* 内核目前支持的通信协议，socket()第三个参数，每个代表一种应用；
+   netlink采用协议号+通信端口(struct sockaddr_nl->nl_pid)的方式构建自己的地址体系 */
+#define NETLINK_ROUTE		0	/* Routing/device hook */
+#define NETLINK_UNUSED		1	/* Unused number */
+#define NETLINK_USERSOCK	2	/* Reserved for user mode socket protocols */
+#define NETLINK_FIREWALL	3	/* Unused number, formerly ip_queue */
+#define NETLINK_SOCK_DIAG	4	/* socket monitoring */
 #define NETLINK_NFLOG		5	/* netfilter/iptables ULOG */
 #define NETLINK_XFRM		6	/* ipsec */
 #define NETLINK_SELINUX		7	/* SELinux event notifications */
@@ -32,19 +34,31 @@
 
 #define MAX_LINKS 32		
 
-struct sockaddr_nl {
-	__kernel_sa_family_t	nl_family;	/* AF_NETLINK	*/
-	unsigned short	nl_pad;		/* zero		*/
-	__u32		nl_pid;		/* port ID	*/
-       	__u32		nl_groups;	/* multicast groups mask */
+/*
+用户态创建netlink socket的基本过程和操作其他socket的API一模一样，但细节上有区别：
+  1) netlink有自己的地址格式，struct sockaddr_nl
+  2) netlink发送、接收消息附带netlink消息头, struct nlmsghdr
+*/
+/*
+用户态创建、销毁socket的过程:
+  1) 用socket()创建，socket(PF_NETLINK, SOCK_DGRAM, NETLINK_XXX)；
+        第一个参数必须是AF_NETLINK，第2为SOCK_DGRAM或SOCK_RAW，第3为netlink协议号
+  2) 用bind()绑定自己的地址
+  3) 用close()关闭套接字
+*/
+struct sockaddr_nl {   /* netlink地址 */
+	__kernel_sa_family_t	nl_family;	/* 值：AF_NETLINK */
+	unsigned short	nl_pad;		/* 值：zero */
+	__u32		nl_pid;		    /* 通信端口(port ID)：内核地址必须为0, 用户态地址可以为进程PID等 */
+    __u32		nl_groups;	    /* 组播掩码，用于同一消息分发给不同的接收者，multicast groups mask */
 };
 
-struct nlmsghdr {
-	__u32		nlmsg_len;	/* Length of message including header */
-	__u16		nlmsg_type;	/* Message content */
-	__u16		nlmsg_flags;	/* Additional flags */
+struct nlmsghdr {      /* netlink消息头 */
+	__u32		nlmsg_len;	/* 待发送消息长度，包括本消息头结构，Length of message including header */
+	__u16		nlmsg_type;	/* 设定消息类型NETLINK_*, Message content */
+	__u16		nlmsg_flags;	/* 附加选项，Additional flags */
 	__u32		nlmsg_seq;	/* Sequence number */
-	__u32		nlmsg_pid;	/* Sending process port ID */
+	__u32		nlmsg_pid;	/* 发送者PID，Sending process port ID */
 };
 
 /* Flags values */

@@ -434,6 +434,8 @@ ab
     : 具体说明参考bpf_obj_pin/bpf_obj_get()函数(~/samples/bpf/libbpf.h)
  - EBPF对kprobe的支持， ~samples/bpf/map_perf_test_kern.c~
     : 测试ebpf+kprobe在内存是否预先分配的情况下，对系统调用的压力
+ - XDP, ~samples/bpf/xdp*~
+    : 
 
 * 参考
  - BSD报文过滤器的设计文档，bpf-usenix93.pdf
