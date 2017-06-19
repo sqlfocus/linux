@@ -259,7 +259,7 @@ static void unlist_netdevice(struct net_device *dev)
 /*
  *	Our notifier list
  */
-
+/* 网络设备注册状态的通知信息 */
 static RAW_NOTIFIER_HEAD(netdev_chain);
 
 /*

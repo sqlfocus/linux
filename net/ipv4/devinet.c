@@ -176,6 +176,7 @@ EXPORT_SYMBOL(__ip_dev_find);
 
 static void rtmsg_ifa(int event, struct in_ifaddr *, struct nlmsghdr *, u32);
 
+/* 本地接口上的IPv4地址的插入、删除及变更的通知信息 */
 static BLOCKING_NOTIFIER_HEAD(inetaddr_chain);
 static void inet_del_ifa(struct in_device *in_dev, struct in_ifaddr **ifap,
 			 int destroy);
