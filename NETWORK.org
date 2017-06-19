@@ -1,0 +1,30 @@
+#+TITLE: linux内核网络协议栈摘录
+#+AUTHOR: sqlfocus
+
+
+本文档摘录linux内核协议栈，了解网络数据包的处理流程，加深对网络协议的理解，
+为网络安全备战！
+
+
+* sk_buff
+此数据结构贯穿整个网络数据包的处理流程，存放真实数据包的相关信息，做为关
+键信息缓存，以加速处理速度。
+ - 定义在~/include/linux/skbuff.h
+ - 分配/释放alloc_skb()/kfree_skb(), ~/net/core/skbuff.c
+ - 设备驱动中分配/释放dev_alloc_skb/dev_kfree_skb(), ~/include/linux/skbuff.h
+ - 操控数据区skb_reserve/skb_put/skb_push/skb_pull(), ~/include/linux/skbuff.h
+ - 记录IP分片信息struct skb_shared_info, ~/include/linux/skbuff.h
+
+* net_device
+存储网络报文相关的网络设备信息。
+ - 定义在~/include/linux/netdevice.h
+
+* 参考
+ - socket.org
+
+
+
+
+
+
+

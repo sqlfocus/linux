@@ -582,11 +582,11 @@ struct netdev_queue {
  * write-mostly part
  */
 	spinlock_t		_xmit_lock ____cacheline_aligned_in_smp;
-	int			xmit_lock_owner;
+	int			xmit_lock_owner;       /* 驱动程序函数 ->hard_start_xmit() 访问串行化 */
 	/*
 	 * Time (in jiffies) of last Tx
 	 */
-	unsigned long		trans_start;
+	unsigned long		trans_start;   /* 最近的帧传输的启动时间，用于检测适配卡的问题；传输时间过长，则有可能重启适配卡 */
 
 	unsigned long		state;
 
@@ -1637,7 +1637,7 @@ enum netdev_priv_flags {
  *	FIXME: cleanup struct net_device such that network protocol info
  *	moves out.
  */
-
+/* 网络设备信息结构 */
 struct net_device {
 	char			name[IFNAMSIZ];   /* 设备名 */
 	struct hlist_node	name_hlist;
@@ -1646,10 +1646,10 @@ struct net_device {
 	 *	I/O specific fields
 	 *	FIXME: Merge these and struct ifmap into one
 	 */
-	unsigned long		mem_end;
+	unsigned long		mem_end;      /* 设备所用的共享内存，用于设备与内核通信, 被设备驱动所用 */
 	unsigned long		mem_start;
-	unsigned long		base_addr;
-	int			irq;
+	unsigned long		base_addr;    /* 自有内存映射到IO内存的起始地址 */
+	int			irq;                  /* 中断号 */
 
 	atomic_t		carrier_changes;
 
@@ -1659,7 +1659,7 @@ struct net_device {
 	 *	part of the usual set specified in Space.c.
 	 */
 
-	unsigned long		state;
+	unsigned long		state;        /* 由网络队列子系统使用, netdev_state_t */
 
 	struct list_head	dev_list;
 	struct list_head	napi_list;
@@ -1678,7 +1678,7 @@ struct net_device {
 		struct list_head lower;
 	} all_adj_list;
 
-	netdev_features_t	features;
+	netdev_features_t	features;     /* 设备功能标志 */
 	netdev_features_t	hw_features;
 	netdev_features_t	wanted_features;
 	netdev_features_t	vlan_features;
@@ -1686,7 +1686,7 @@ struct net_device {
 	netdev_features_t	mpls_features;
 	netdev_features_t	gso_partial_features;
 
-	int			ifindex;              /* 索引ID */
+	int			ifindex;              /* 索引ID，独一无二 */
 	int			group;
 
 	struct net_device_stats	stats;
@@ -1713,21 +1713,21 @@ struct net_device {
 
 	const struct header_ops *header_ops;
 
-	unsigned int		flags;
-	unsigned int		priv_flags;
+	unsigned int		flags;             /* 设备的功能或状态标志 */
+	unsigned int		priv_flags;        /* 用户空间不可见标志，如VLAN、桥等 */
 
-	unsigned short		gflags;
+	unsigned short		gflags;            /* 废弃的标志，不再使用，仅为后向兼容 */
 	unsigned short		padded;
 
 	unsigned char		operstate;
 	unsigned char		link_mode;
 
-	unsigned char		if_port;
-	unsigned char		dma;
+	unsigned char		if_port;           /* 接口使用的端口类型，以适配连接器 */
+	unsigned char		dma;               /* 设备使用的DMA通道 */
 
-	unsigned int		mtu;
-	unsigned short		type;              /* 硬件类型 */
-	unsigned short		hard_header_len;
+	unsigned int		mtu;               /* 能处理的最大帧长 */
+	unsigned short		type;              /* 硬件类型，如Ethernet等 */
+	unsigned short		hard_header_len;   /* 设备头大小，字节，如Ethernet为14 */
 
 	unsigned short		needed_headroom;
 	unsigned short		needed_tailroom;
@@ -1749,13 +1749,13 @@ struct net_device {
 #ifdef CONFIG_SYSFS
 	struct kset		*queues_kset;
 #endif
-	unsigned int		promiscuity;
-	unsigned int		allmulti;
+	unsigned int		promiscuity;       /* 混杂模式；利用计数器而不仅是标识，因为多个client可能设置、取消混杂模式, dev_set_promiscuity() */ 
+	unsigned int		allmulti;          /* 非0时，监听所有多播地址 */
 
 
 	/* Protocol-specific pointers */
 
-#if IS_ENABLED(CONFIG_VLAN_8021Q)
+#if IS_ENABLED(CONFIG_VLAN_8021Q)          /* 特定协议专有数据指针，包含该协议的私有参数等 */
 	struct vlan_info __rcu	*vlan_info;
 #endif
 #if IS_ENABLED(CONFIG_NET_DSA)
@@ -1765,7 +1765,7 @@ struct net_device {
 	struct tipc_bearer __rcu *tipc_ptr;
 #endif
 	void 			*atalk_ptr;
-	struct in_device __rcu	*ip_ptr;
+	struct in_device __rcu	*ip_ptr;       /* IPv4相关参数 */
 	struct dn_dev __rcu     *dn_ptr;
 	struct inet6_dev __rcu	*ip6_ptr;
 	void			*ax25_ptr;
@@ -1778,10 +1778,10 @@ struct net_device {
 /*
  * Cache lines mostly used on receive path (including eth_type_trans())
  */
-	unsigned long		last_rx;
+	unsigned long		last_rx;                  /* 最后包达到的时间，jiffies */
 
 	/* Interface address info used in eth_type_trans() */
-	unsigned char		*dev_addr;
+	unsigned char		*dev_addr;                /* 设备链路层地址 */
 
 #ifdef CONFIG_SYSFS
 	struct netdev_rx_queue	*_rx;
@@ -1802,7 +1802,7 @@ struct net_device {
 	struct nf_hook_entry __rcu *nf_hooks_ingress;
 #endif
 
-	unsigned char		broadcast[MAX_ADDR_LEN];
+	unsigned char		broadcast[MAX_ADDR_LEN];  /* 链路层广播地址 */
 #ifdef CONFIG_RFS_ACCEL
 	struct cpu_rmap		*rx_cpu_rmap;
 #endif
@@ -1814,11 +1814,11 @@ struct net_device {
 	struct netdev_queue	*_tx ____cacheline_aligned_in_smp;
 	unsigned int		num_tx_queues;
 	unsigned int		real_num_tx_queues;
-	struct Qdisc		*qdisc;
+	struct Qdisc		*qdisc;                   /* qos */
 #ifdef CONFIG_NET_SCHED
 	DECLARE_HASHTABLE	(qdisc_hash, 4);
 #endif
-	unsigned long		tx_queue_len;
+	unsigned long		tx_queue_len;             /* 设备发送队列长度 */
 	spinlock_t		tx_global_lock;
 	int			watchdog_timeo;
 
@@ -1843,7 +1843,7 @@ struct net_device {
 	       NETREG_UNREGISTERED,	/* completed unregister todo */
 	       NETREG_RELEASED,		/* called free_netdev */
 	       NETREG_DUMMY,		/* dummy device for NAPI poll */
-	} reg_state:8;
+	} reg_state:8;              /* 设备的注册状态 */
 
 	bool dismantle;
 
@@ -1872,7 +1872,7 @@ struct net_device {
 	struct garp_port __rcu	*garp_port;
 	struct mrp_port __rcu	*mrp_port;
 
-	struct device		dev;
+	struct device		dev;           /* */
 	const struct attribute_group *sysfs_groups[4];
 	const struct attribute_group *sysfs_rx_queue_group;
 

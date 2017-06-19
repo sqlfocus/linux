@@ -411,7 +411,7 @@ struct ubuf_info {
 
 /* This data is invariant across clones and lives at
  * the end of the header data, ie. at skb->end.
- */
+ *//* 跟在struct sk_buff->end后，维护额外信息(IP分片)，分配struct sk_buff时分配 */
 struct skb_shared_info {
 	unsigned char	nr_frags;
 	__u8		tx_flags;
@@ -419,7 +419,7 @@ struct skb_shared_info {
 	/* Warning: this field is not always filled in (UFO)! */
 	unsigned short	gso_segs;
 	unsigned short  gso_type;
-	struct sk_buff	*frag_list;
+	struct sk_buff	*frag_list;     /* 维护IP分片信息 */
 	struct skb_shared_hwtstamps hwtstamps;
 	u32		tskey;
 	__be32          ip6_frag_id;
@@ -427,7 +427,7 @@ struct skb_shared_info {
 	/*
 	 * Warning : all fields before dataref are cleared in __alloc_skb()
 	 */
-	atomic_t	dataref;
+	atomic_t	dataref;            /* 维护缓存头struct sk_buff计数，用于clone */
 
 	/* Intermediate layers must ensure that destructor_arg
 	 * remains valid until skb destructor */
@@ -632,7 +632,8 @@ static inline bool skb_mstamp_after(const struct skb_mstamp *t1,
  *	@truesize: Buffer size
  *	@users: User count - see {datagram,tcp}.c
  */
-/* 在网络实现的各层次之间传递信息，避免无谓的copy */
+/* 在网络实现的各层次之间传递信息，避免无谓的copy；
+   分配内存，同时分配struct skb_shared_info, 跟在struct sk_buff->end后 */
 struct sk_buff {
 	union {
 		struct {
@@ -648,7 +649,7 @@ struct sk_buff {
 		struct rb_node	rbnode; /* used in netem & tcp stack */
 	};
 	struct sock		*sk;                       /* 对应的插口结构 */
-	struct net_device	*dev;                  /* 处理报文的设备 */
+	struct net_device	*dev;                  /* 处理报文的设备，接收或发送 */
 
 	/*
 	 * This is the control buffer. It is free to use for every
@@ -656,7 +657,7 @@ struct sk_buff {
 	 * want to keep them across layers you have to do a skb_clone()
 	 * first. This is owned by whoever has the skb queued ATM.
 	 */
-	char			cb[48] __aligned(8);
+	char			cb[48] __aligned(8);       /* 私有存储区，为L2-L4在各层内使用 */
 
 	unsigned long		_skb_refdst;
 	void			(*destructor)(struct sk_buff *skb);
@@ -664,15 +665,16 @@ struct sk_buff {
 	struct	sec_path	*sp;
 #endif
 #if defined(CONFIG_NF_CONNTRACK) || defined(CONFIG_NF_CONNTRACK_MODULE)
+
 	struct nf_conntrack	*nfct;
 #endif
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 	struct nf_bridge_info	*nf_bridge;
 #endif
-	unsigned int		len,
-				data_len;
-	__u16			mac_len,
-				hdr_len;
+	unsigned int		len,                   /* 数据长度，包括分片，解析过程中变化 */
+                        data_len;              /* 分片数据长度 */
+	__u16			mac_len,                   /* MAC头大小 */
+                    hdr_len;                   /* */
 
 	/* Following fields are _not_ copied in __copy_skb_header()
 	 * Note that queue_mapping is here mostly to fill a hole.
@@ -689,7 +691,7 @@ struct sk_buff {
 #define CLONED_OFFSET()		offsetof(struct sk_buff, __cloned_offset)
 
 	__u8			__cloned_offset[0];
-	__u8			cloned:1,
+	__u8			cloned:1,    /* */
 				nohdr:1,
 				fclone:2,
 				peeked:1,
@@ -714,7 +716,7 @@ struct sk_buff {
 #define PKT_TYPE_OFFSET()	offsetof(struct sk_buff, __pkt_type_offset)
 
 	__u8			__pkt_type_offset[0];
-	__u8			pkt_type:3;
+	__u8			pkt_type:3;            /* 帧类型, PACKET_HOST */
 	__u8			pfmemalloc:1;
 	__u8			ignore_df:1;
 	__u8			nfctinfo:3;
@@ -755,13 +757,13 @@ struct sk_buff {
 #endif
 
 	union {
-		__wsum		csum;
+		__wsum		csum;                /* */
 		struct {
 			__u16	csum_start;
 			__u16	csum_offset;
 		};
 	};
-	__u32			priority;
+	__u32			priority;            /* qos等级 */
 	int			skb_iif;                 /* 接收接口 */
 	__u32			hash;
 	__be16			vlan_proto;
@@ -790,7 +792,7 @@ struct sk_buff {
 	__u16			inner_network_header;
 	__u16			inner_mac_header;
 
-	__be16			protocol;
+	__be16			protocol;          /* L3层协议 */
 	__u16			transport_header;
 	__u16			network_header;
 	__u16			mac_header;
@@ -804,8 +806,8 @@ struct sk_buff {
 	sk_buff_data_t		end;    /* data/tail指向协议数据的起始，随着协议处理动态调整 */
 	unsigned char		*head,
 				*data;
-	unsigned int		truesize;
-	atomic_t		users;
+	unsigned int		truesize;    /* 总长度，包括此结构本身 */
+	atomic_t		users;      /* 此结构引用计数，防止提前释放 */
 };
 
 #ifdef __KERNEL__

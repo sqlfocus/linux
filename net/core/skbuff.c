@@ -78,6 +78,7 @@
 #include <linux/capability.h>
 #include <linux/user_namespace.h>
 
+/* 存放 struct sk_buff 的缓存 */
 struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
 int sysctl_max_skb_frags __read_mostly = MAX_SKB_FRAGS;
@@ -209,13 +210,11 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	u8 *data;
 	bool pfmemalloc;
 
+	/* 根据标志，从缓存获取sk_buff, Get the HEAD */
 	cache = (flags & SKB_ALLOC_FCLONE)
 		? skbuff_fclone_cache : skbuff_head_cache;
-
 	if (sk_memalloc_socks() && (flags & SKB_ALLOC_RX))
 		gfp_mask |= __GFP_MEMALLOC;
-
-	/* Get the HEAD */
 	skb = kmem_cache_alloc_node(cache, gfp_mask & ~__GFP_DMA, node);
 	if (!skb)
 		goto out;
@@ -225,7 +224,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	 * line. It usually works because kmalloc(X > SMP_CACHE_BYTES) gives
 	 * aligned memory blocks, unless SLUB/SLAB debug is enabled.
 	 * Both skb->head and skb_shared_info are cache line aligned.
-	 */
+	 *//* 分配报文数据区，数据后跟结构struct skb_shared_info，以维护IP分片 */
 	size = SKB_DATA_ALIGN(size);
 	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = kmalloc_reserve(size, gfp_mask, node, &pfmemalloc);
@@ -242,7 +241,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	 * Only clear those fields we need to clear, not those that we will
 	 * actually initialise below. Hence, don't put any more fields after
 	 * the tail pointer in struct sk_buff!
-	 */
+	 *//* 初始化 */
 	memset(skb, 0, offsetof(struct sk_buff, tail));
 	/* Account for allocated memory : skb + skb->head */
 	skb->truesize = SKB_TRUESIZE(size);
@@ -255,7 +254,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	skb->mac_header = (typeof(skb->mac_header))~0U;
 	skb->transport_header = (typeof(skb->transport_header))~0U;
 
-	/* make sure we initialize shinfo sequentially */
+	/* 初始化IP分片信息区，在数据缓存后，make sure we initialize shinfo sequentially */
 	shinfo = skb_shinfo(skb);
 	memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
 	atomic_set(&shinfo->dataref, 1);
@@ -1010,7 +1009,7 @@ EXPORT_SYMBOL_GPL(skb_copy_ubufs);
  *	If this function is called from an interrupt gfp_mask() must be
  *	%GFP_ATOMIC.
  */
-
+/* 支持单报文的并发处理，仅复制struct sk_buff以提高效率 */
 struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 {
 	struct sk_buff_fclones *fclones = container_of(skb,
