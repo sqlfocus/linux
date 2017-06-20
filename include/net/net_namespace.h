@@ -76,10 +76,10 @@ struct net {
 	struct sock 		*rtnl;			/* rtnetlink socket */
 	struct sock		*genl_sock;
 
-	struct list_head 	dev_base_head;
-	struct hlist_head 	*dev_name_head;
-	struct hlist_head	*dev_index_head;
-	unsigned int		dev_base_seq;	/* protected by rtnl_mutex */
+	struct list_head 	dev_base_head;   /* 包含所有net_device实例的列表(net_device->dev_list), 方便遍历 */
+	struct hlist_head 	*dev_name_head;  /* 以设备名称(net_device->name)索引的hash表(net_device->name_hlist) */
+	struct hlist_head	*dev_index_head; /* 以设备ID索引(net_device->ifindex)的hash表(net_device->index_hlist) */
+	unsigned int		dev_base_seq;	 /* protected by rtnl_mutex */
 	int			ifindex;
 	unsigned int		dev_unreg_count;
 

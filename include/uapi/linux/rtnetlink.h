@@ -575,8 +575,9 @@ enum {
 #define NDUSEROPT_MAX	(__NDUSEROPT_MAX - 1)
 
 #ifndef __KERNEL__
-/* RTnetlink multicast groups - backwards compatibility for userspace */
-#define RTMGRP_LINK		1
+/* 用户态应用程序监听以下netlink广播组，可接收内核事件；
+   RTnetlink multicast groups - backwards compatibility for userspace */
+#define RTMGRP_LINK		1               /* 网络设备注册、卸载、关闭、开启事件 */
 #define RTMGRP_NOTIFY		2
 #define RTMGRP_NEIGH		4
 #define RTMGRP_TC		8

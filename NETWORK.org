@@ -19,6 +19,10 @@
 存储网络报文相关的网络设备信息。
  - 定义在~/include/linux/netdevice.h
 
+* 初始化
+ - net_dev_init()       :: 流量控制、入口队列初始化
+   : ~/net/core/dev.c
+
 * 参考
  - socket.org
 

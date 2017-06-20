@@ -676,10 +676,11 @@ struct pci_error_handlers {
 
 
 struct module;
+/* 定义PCI层与设备驱动程序之间的接口 */
 struct pci_driver {
 	struct list_head node;
-	const char *name;
-	const struct pci_device_id *id_table;	/* must be non-NULL for probe to be called */
+	const char *name;         /* 驱动程序名称 */
+	const struct pci_device_id *id_table;	/* 设备标识符，PCI标准定义的ID，must be non-NULL for probe to be called */
 	int  (*probe)  (struct pci_dev *dev, const struct pci_device_id *id);	/* New device inserted */
 	void (*remove) (struct pci_dev *dev);	/* Device removed (NULL if not a hot-plug capable driver) */
 	int  (*suspend) (struct pci_dev *dev, pm_message_t state);	/* Device suspended */
@@ -690,7 +691,7 @@ struct pci_driver {
 	int (*sriov_configure) (struct pci_dev *dev, int num_vfs); /* PF pdev */
 	const struct pci_error_handlers *err_handler;
 	struct device_driver	driver;
-	struct pci_dynids dynids;
+	struct pci_dynids dynids; /* 动态ID */
 };
 
 #define	to_pci_driver(drv) container_of(drv, struct pci_driver, driver)

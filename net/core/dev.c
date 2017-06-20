@@ -259,7 +259,7 @@ static void unlist_netdevice(struct net_device *dev)
 /*
  *	Our notifier list
  */
-/* 网络设备注册状态的通知信息 */
+/* 网络设备状态的通知链 */
 static RAW_NOTIFIER_HEAD(netdev_chain);
 
 /*
@@ -1373,6 +1373,7 @@ int dev_open(struct net_device *dev)
 	if (ret < 0)
 		return ret;
 
+    /* 告知netlink多播组，及 netdev_chain 通知链 */
 	rtmsg_ifinfo(RTM_NEWLINK, dev, IFF_UP|IFF_RUNNING, GFP_KERNEL);
 	call_netdevice_notifiers(NETDEV_UP, dev);
 
@@ -8285,23 +8286,27 @@ static struct pernet_operations __net_initdata default_device_ops = {
 /*
  *       This is called single threaded during boot, so no need
  *       to take the rtnl semaphore.
- */
+ *//* 网络代码初始化的重要部分，包括流量控制和各个CPU入口队列 */
 static int __init net_dev_init(void)
 {
 	int i, rc = -ENOMEM;
 
 	BUG_ON(!dev_boot_phase);
 
+    /* 注册/proc/net */
 	if (dev_proc_init())
 		goto out;
 
+    /* */
 	if (netdev_kobject_init())
 		goto out;
 
+    /* 初始化协议处理句柄 */
 	INIT_LIST_HEAD(&ptype_all);
 	for (i = 0; i < PTYPE_HASH_SIZE; i++)
 		INIT_LIST_HEAD(&ptype_base[i]);
 
+    /* */
 	INIT_LIST_HEAD(&offload_base);
 
 	if (register_pernet_subsys(&netdev_net_ops))
@@ -8348,9 +8353,11 @@ static int __init net_dev_init(void)
 	if (register_pernet_device(&default_device_ops))
 		goto out;
 
+    /* 注册软中断，发送、接收 */
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 
+    /* 注册到cpu热插拔事件的通知链 */
 	hotcpu_notifier(dev_cpu_callback, 0);
 	dst_subsys_init();
 	rc = 0;

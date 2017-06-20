@@ -108,18 +108,18 @@ typedef irqreturn_t (*irq_handler_t)(int, void *);
  * @dir:	pointer to the proc/irq/NN/name entry
  */
 struct irqaction {
-	irq_handler_t		handler;
-	void			*dev_id;
+	irq_handler_t		handler;      /* 中断处理句柄 */
+	void			*dev_id;          /* 关联的设备数据结构，如struct net_device */
 	void __percpu		*percpu_dev_id;
-	struct irqaction	*next;
+	struct irqaction	*next;        /* 共享IRQ的列表 */
 	irq_handler_t		thread_fn;
 	struct task_struct	*thread;
 	struct irqaction	*secondary;
 	unsigned int		irq;
-	unsigned int		flags;
+	unsigned int		flags;        /* 标识，如 IRQF_SHARED */
 	unsigned long		thread_flags;
 	unsigned long		thread_mask;
-	const char		*name;
+	const char		*name;            /* 设备名称 */
 	struct proc_dir_entry	*dir;
 } ____cacheline_internodealigned_in_smp;
 

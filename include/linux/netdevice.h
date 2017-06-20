@@ -279,11 +279,11 @@ struct header_ops {
  */
 
 enum netdev_state_t {
-	__LINK_STATE_START,
-	__LINK_STATE_PRESENT,
-	__LINK_STATE_NOCARRIER,
-	__LINK_STATE_LINKWATCH_PENDING,
-	__LINK_STATE_DORMANT,
+	__LINK_STATE_START,              /* 设备开启 */
+	__LINK_STATE_PRESENT,            /* 设备存在，主要用于热插拔设备 */
+	__LINK_STATE_NOCARRIER,          /* 没有载波 */
+	__LINK_STATE_LINKWATCH_PENDING,  /* 设备的链路状态已变更 */
+	__LINK_STATE_DORMANT,            /**/
 };
 
 
@@ -1640,7 +1640,7 @@ enum netdev_priv_flags {
 /* 网络设备信息结构 */
 struct net_device {
 	char			name[IFNAMSIZ];   /* 设备名 */
-	struct hlist_node	name_hlist;
+	struct hlist_node	name_hlist;   /* 连接入struct net->dev_name_head哈希表，以->name为键 */
 	char 			*ifalias;
 	/*
 	 *	I/O specific fields
@@ -1661,7 +1661,7 @@ struct net_device {
 
 	unsigned long		state;        /* 由网络队列子系统使用, netdev_state_t */
 
-	struct list_head	dev_list;
+	struct list_head	dev_list;     /* 挂接入struct net->dev_base_head */
 	struct list_head	napi_list;
 	struct list_head	unreg_list;
 	struct list_head	close_list;
@@ -1806,7 +1806,7 @@ struct net_device {
 #ifdef CONFIG_RFS_ACCEL
 	struct cpu_rmap		*rx_cpu_rmap;
 #endif
-	struct hlist_node	index_hlist;
+	struct hlist_node	index_hlist;              /* 链入struct net->dev_index_head, ->ifindex 为键 */
 
 /*
  * Cache lines mostly used on transmit path
@@ -1837,11 +1837,11 @@ struct net_device {
 
 	struct list_head	link_watch_list;
 
-	enum { NETREG_UNINITIALIZED=0,
-	       NETREG_REGISTERED,	/* completed register_netdevice */
+	enum { NETREG_UNINITIALIZED=0,  /* net_device已分配内存，且全部清0 */
+	       NETREG_REGISTERED,	/* 注册完毕，completed register_netdevice */
 	       NETREG_UNREGISTERING,	/* called unregister_netdevice */
-	       NETREG_UNREGISTERED,	/* completed unregister todo */
-	       NETREG_RELEASED,		/* called free_netdev */
+	       NETREG_UNREGISTERED,	/* 卸载完毕，completed unregister todo */
+	       NETREG_RELEASED,		/* 无对net_device的引用，called free_netdev */
 	       NETREG_DUMMY,		/* dummy device for NAPI poll */
 	} reg_state:8;              /* 设备的注册状态 */
 
@@ -2294,7 +2294,7 @@ struct netdev_lag_lower_state_info {
 /* netdevice notifier chain. Please remember to update the rtnetlink
  * notification exclusion list in rtnetlink_event() when adding new
  * types.
- */
+ *//* netdev_chain 通知链 */
 #define NETDEV_UP	0x0001	/* For now you can't veto a device up/down */
 #define NETDEV_DOWN	0x0002
 #define NETDEV_REBOOT	0x0003	/* Tell a protocol stack a network interface
