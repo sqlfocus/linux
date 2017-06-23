@@ -5,6 +5,19 @@
 本文档摘录linux的插口操作，以期对内核协议栈的了解更加深入，为日后工作中
 排出内核问题、性能调优等提供支撑！
 
+* sk_buff
+此数据结构贯穿整个网络数据包的处理流程，存放真实数据包的相关信息，做为关
+键信息缓存，以加速处理速度。
+ - 定义在~/include/linux/skbuff.h
+ - 分配/释放alloc_skb()/kfree_skb(), ~/net/core/skbuff.c
+ - 设备驱动中分配/释放dev_alloc_skb/dev_kfree_skb(), ~/include/linux/skbuff.h
+ - 操控数据区skb_reserve/skb_put/skb_push/skb_pull(), ~/include/linux/skbuff.h
+ - 记录IP分片信息struct skb_shared_info, ~/include/linux/skbuff.h
+
+* net_device
+存储网络报文相关的网络设备信息。
+ - 定义在~/include/linux/netdevice.h
+
 * 初始化流程
 网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
 操作集合。
@@ -24,6 +37,10 @@
       -register_pernet_subsys()         注册网络命名空间的操控集tcp_sk_ops
     -tcp_init()                         建立TCP请求的缓存，初始化各种内存限制，~/net/ipv4/tcp.c
   #+END_EXAMPLE
+
+** net_dev_init()
+流量控制、入口队列初始化
+~/net/core/dev.c
 
 * 全局变量
 ** ~inet_protos[]~
@@ -227,4 +244,80 @@ ab
 * TODO 快速打开fastopen
 ab
 
+* SO_REUSEPORT
+SO_REUSEPORT属性在linux内核3.9之后才提供，使得同一主机上多个插口可以绑定到
+相同的端口，而且内核提供负载均衡策略，从而优化并提高并发服务器的性能。
+
+** SO_REUSEPORT提升性能?
+运行在Linux系统上网络应用程序，为了利用多核的优势，一般使用多进程/多线程服
+务器模型：
+ - 单线程listen+accept，其他多线程接收分发任务
+     : CPU的工作负载不再是问题
+     : 但仍有其他瓶颈
+     :    1) 单线程listener，处理高速率海量连接时，会成为瓶颈
+     :    2) CPU缓存行miss套接字结构(socket structure)现象严重
+ - 所有工作线程都accept()在同一个服务器套接字上
+     : 多线程访问server socket锁竞争严重
+     : 高负载下，线程之间处理不均衡；导致核数增加，性能并没有提升
+     : 导致CPU缓存行跳跃(cache line bouncing)
+     : 繁忙CPU存在较大延迟
+
+** SO_REUSEPORT原理
+The new socket option allows multiple sockets on the same host to bind 
+to the same port, and is intended to improve the performance of 
+multithreaded network server applications running on top of multicore 
+systems.
+
+SO_REUSEPORT支持多个进程或者线程绑定到同一端口，提高服务器程序的性能，解决
+了以下问题：
+  - 允许多个套接字bind()/listen()同一个TCP/UDP端口
+  - 每一个线程拥有自己的服务器套接字
+  - 在服务器套接字上没有了锁的竞争
+  - 内核层面实现负载均衡
+  - 安全层面，监听同一个端口的套接字只能位于同一个用户下面
+
+** nginx配置
+  #+BEGIN_EXAMPLE
+  events {
+      accept_mutex off;
+  }
+
+  http {
+     server {
+         listen 80 reuseport;
+     }
+  }
+  #+END_EXAMPLE
+
+** 内核实现
+linux核心的实现主要有三点：
+  - 扩展socket option
+      : 增加SO_REUSEPORT选项
+  - 修改bind系统调用实现
+      : 支持可以绑定到相同的IP和端口
+  - 修改处理新建连接的实现
+      : 查找listener时，在监听相同IP和端口的多个sock之间均衡选择
+
+*** setsockopt()
+  #+BEGIN_EXAMPLE
+  -SYSCALL_DEFINE5(setsockopt,,,,,,)                   入口，~/net/socket.c
+    -sock_setsockopt()
+      -设置struct socket->sk->sk_reuseport             =0/1, 设置插口属性值，~/net/core/sock.c
+  #+END_EXAMPLE
+
+*** bind()
+ab
+
+*** listen()
+ab
+
+*** accept()
+ab
+
+** 参考
+  - [[http://www.blogjava.net/yongboy/archive/2015/02/12/422893.html?utm_source=tuicool&utm_medium=referral][SO_REUSEPORT学习笔记]]
+  - [[http://m.blog.chinaunix.net/uid-10167808-id-3807060.html][多个进程绑定相同端口的实现分析]]
+
+* 新名词
+ - NAPI         :: new API, 网络层新接口，糅合了poll/中断两种报文接收模式
 
