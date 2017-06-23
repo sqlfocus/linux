@@ -10,7 +10,8 @@
  - 区分机制和策略时unix设备背后隐含的最好思想之一
  - 对于编写正确的内核代码来说，优良的并发管理时必须的
 
-* 内核版本信息
+* 摘要
+** 内核版本信息
 包含头文件linux/version.h或linux/module.h后，可使用下属宏
  - UTS_RELEASE
    : 描述内核版本的字符串，如"2.6.10"
@@ -19,7 +20,7 @@
  - KERNEL_VERSION(major, minor, release)
    : 创建整数的版本号
 
-* 模块儿
+** 模块儿知名函数
  - 必须包含的头文件
    : #include <linux/module.h>
    : #include <linux/init.h>
@@ -37,7 +38,15 @@
  - printk()
    : 内核的打印函数
 
-* 通用Makfile
+** 设备号
+ - 可通过ls -l /dev查看设备号
+   : 各列含义  属性、链接数、用户名、组名、主设备号、次设备号、修改日期、名称
+ - 主设备号标识设备对应的驱动程序
+ - 次设备号由内核使用，确认设备文件所指的设备
+ - 通过struct file_operations(linux/fs.h)结构建立设备号与驱动程序的关联
+ - 操控宏MAJOR/MINOR/MKDEV()
+
+** 通用Makfile
  #+BEGIN_EXAMPLE
  ###从内核构造系统调用
  ifneq ($(KERNELRELEASE),)
@@ -51,6 +60,11 @@
      $(MAKE) -C $(KERNELDIR) M=$(PWD) modules
  endif
  #+END_EXAMPLE
+
+* 全局变量
+** cdev_map
+定义在~/fs/char_dev.c，所有字符设备注册表，维护struct cdev和设备号之
+间映射关系。
 
 * 参考
  - <<linux设备驱动程序>>

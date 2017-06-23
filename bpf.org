@@ -195,6 +195,8 @@ with minimal performance overhead over two steps, that is, C -> eBPF -> native c
  #+END_EXAMPLE
 
 ** 示例
+此示例的源码版本为4.9-rc3, 不同版本~/samples/bpf/目录依赖文件变化较大，
+具体版本的依赖可能不同，可参考https://github.com/sqlfocus/prototype-kernel/tree/master/kernel/samples/bpf
  #+BEGIN_EXAMPLE
  $ cd ~/work
  $
@@ -444,6 +446,7 @@ ab
  - man bpf
  - ebpf编程示例，~/samples/bpf/
  - [[https://github.com/iovisor/bcc][BCC]]
+ - [[https://github.com/sqlfocus/prototype-kernel/tree/master/kernel/samples/bpf][XDP]]
  - man tc
  - ~/kernel/bpf/
  - ~/tools/lib/bpf/

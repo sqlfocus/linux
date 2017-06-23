@@ -1648,7 +1648,7 @@ struct net_device {
 	 */
 	unsigned long		mem_end;      /* 设备所用的共享内存，用于设备与内核通信, 被设备驱动所用 */
 	unsigned long		mem_start;
-	unsigned long		base_addr;    /* 自有内存映射到IO内存的起始地址 */
+	unsigned long		base_addr;    /* 网络接口IO基地址 */
 	int			irq;                  /* 中断号 */
 
 	atomic_t		carrier_changes;

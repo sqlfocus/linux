@@ -23,6 +23,9 @@
  - net_dev_init()       :: 流量控制、入口队列初始化
    : ~/net/core/dev.c
 
+* 新名词
+ - NAPI         :: new API, 网络层新接口，糅合了poll/中断两种报文接收模式
+
 * 参考
  - socket.org
 
