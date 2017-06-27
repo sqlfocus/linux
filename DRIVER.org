@@ -61,10 +61,27 @@
  endif
  #+END_EXAMPLE
 
+* PCI
+PCI总线在X86体系很流行；内核中的PCI子系统提供各种PCI设备驱动程序共同的
+通用功能，以使得驱动程序更加简洁，也使得内核更易于维护和收集各种设备信
+息。
+
+** pci_device_id
+PCI标准定义的设备标识符号，定义在~/include/linux/mod_devicetable.h
+
+** pci_dev
+对应每一个PCI设备的描述结构，定义在~/include/linux/pci.h
+
+** pci_driver
+定义PCI层和设备驱动程序之间的接口，定义在~/include/linux/pci.h
+
 * 全局变量
 ** cdev_map
 定义在~/fs/char_dev.c，所有字符设备注册表，维护struct cdev和设备号之
 间映射关系。
+
+* 新名词
+ - PCI          :: Peripheral Component Interconnect, 外设部件互连标准
 
 * 参考
  - <<linux设备驱动程序>>

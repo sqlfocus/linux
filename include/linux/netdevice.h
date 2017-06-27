@@ -292,8 +292,8 @@ enum netdev_state_t {
  * are then used in the device probing.
  */
 struct netdev_boot_setup {
-	char name[IFNAMSIZ];
-	struct ifmap map;
+	char name[IFNAMSIZ];        /* 接口名 */
+	struct ifmap map;           /* 接口配置 */
 };
 #define NETDEV_BOOT_SETUP_MAX 8
 
@@ -308,14 +308,14 @@ struct napi_struct {
 	 * whoever atomically sets that bit can add this napi_struct
 	 * to the per-CPU poll_list, and whoever clears that bit
 	 * can remove from the list right before clearing the bit.
-	 */
+	 *//* 此链表串联的设备处于轮询状态，中断功能关闭；列表头为softnet_data->poll_list */
 	struct list_head	poll_list;
 
 	unsigned long		state;
-	int			weight;
+	int			weight;                               /* 权重 */
 	unsigned int		gro_count;
-	int			(*poll)(struct napi_struct *, int);
-#ifdef CONFIG_NETPOLL
+	int			(*poll)(struct napi_struct *, int);   /* 处理函数, 非NAPI= process_backlog(), 在 net_dev_init() 设置 */
+#ifdef CONFIG_NETPOLL                                 /* e1000网卡驱动NAPI= e1000_clean(), 在函数e1000_probe()中设置 */
 	spinlock_t		poll_lock;
 	int			poll_owner;
 #endif
@@ -1637,7 +1637,11 @@ enum netdev_priv_flags {
  *	FIXME: cleanup struct net_device such that network protocol info
  *	moves out.
  */
-/* 网络设备信息结构 */
+/* 网络设备信息结构；此结构可由驱动程序扩充，大小由 alloc_netdev() 第一个参数决定；
+   此结构加入一个链表，两个hash表，以便于在不同场合快速查找：
+       struct net->dev_base_head   包含所有net_device实例的列表(net_device->dev_list), 方便遍历
+	   struct net->dev_name_head   以设备名称(net_device->name)索引的hash表(key: net_device->name_hlist)      --- dev_get_by_name()
+	   struct net->dev_index_head  以设备ID索引(net_device->ifindex)的hash表(key: net_device->index_hlist)    --- dev_get_by_index() */
 struct net_device {
 	char			name[IFNAMSIZ];   /* 设备名 */
 	struct hlist_node	name_hlist;   /* 连接入struct net->dev_name_head哈希表，以->name为键 */
@@ -1713,7 +1717,7 @@ struct net_device {
 
 	const struct header_ops *header_ops;
 
-	unsigned int		flags;             /* 设备的功能或状态标志 */
+	unsigned int		flags;             /* 设备的功能或状态标志, 如 IFF_UP */
 	unsigned int		priv_flags;        /* 用户空间不可见标志，如VLAN、桥等 */
 
 	unsigned short		gflags;            /* 废弃的标志，不再使用，仅为后向兼容 */
@@ -1814,13 +1818,13 @@ struct net_device {
 	struct netdev_queue	*_tx ____cacheline_aligned_in_smp;
 	unsigned int		num_tx_queues;
 	unsigned int		real_num_tx_queues;
-	struct Qdisc		*qdisc;                   /* qos */
+	struct Qdisc		*qdisc;                   /* qos相关 */
 #ifdef CONFIG_NET_SCHED
 	DECLARE_HASHTABLE	(qdisc_hash, 4);
 #endif
 	unsigned long		tx_queue_len;             /* 设备发送队列长度 */
 	spinlock_t		tx_global_lock;
-	int			watchdog_timeo;
+	int			watchdog_timeo;                   /* 发送超时定时器 */
 
 #ifdef CONFIG_XPS
 	struct xps_dev_maps __rcu *xps_maps;
@@ -2218,16 +2222,16 @@ static inline struct sk_buff **call_gro_receive_sk(gro_receive_sk_t cb,
 }
 
 struct packet_type {
-	__be16			type;	/* This is really htons(ether_type). */
-	struct net_device	*dev;	/* NULL is wildcarded here	     */
+	__be16			type;	    /* 协议代码，This is really htons(ether_type). */
+	struct net_device	*dev;	/* 设备指针，NULL代表所有设备 */
 	int			(*func) (struct sk_buff *,
 					 struct net_device *,
 					 struct packet_type *,
 					 struct net_device *);
 	bool			(*id_match)(struct packet_type *ptype,
 					    struct sock *sk);
-	void			*af_packet_priv;
-	struct list_head	list;
+	void			*af_packet_priv;  /* 由 PF_PACKET 套接字使用，指向此结构关联的 struct sock 数据结构 */
+	struct list_head	list;   /* hash冲突链 */
 };
 
 struct offload_callbacks {
@@ -2814,22 +2818,33 @@ extern int netdev_flow_limit_table_len;
  * Incoming packets are placed on per-CPU queues
  */
 struct softnet_data {
-	struct list_head	poll_list;
-	struct sk_buff_head	process_queue;
+	struct list_head	poll_list;      /* 设备链表，它们有输入帧待处理 */
+	struct sk_buff_head	process_queue;  /* 临时队列，减少加锁粒度??? */
 
 	/* stats */
 	unsigned int		processed;
 	unsigned int		time_squeeze;
 	unsigned int		received_rps;
+    /* RPS(Receive Packet Steering)主要是把软中断的负载均衡到各个cpu，简
+       单来说，是网卡驱动对每个流生成一个hash标识，这个HASH值得计算可以
+       通过四元组来计算(SIP，SPORT，DIP，DPORT)，然后由中断处理的地方根
+       据这个hash标识分配到相应的CPU上去，这样就可以比较充分的发挥多核
+       的能力了
+
+       通俗点来说就是在软件层面模拟实现硬件的多队列网卡功能，如果网卡本
+       身支持多队列功能的话RPS就不会有任何的作用
+
+       该功能主要针对单队列网卡多CPU环境，如网卡支持多队列则可使用SMP irq
+       affinity直接绑定硬中断 */
 #ifdef CONFIG_RPS
 	struct softnet_data	*rps_ipi_list;
 #endif
 #ifdef CONFIG_NET_FLOW_LIMIT
 	struct sd_flow_limit __rcu *flow_limit;
 #endif
-	struct Qdisc		*output_queue;
+	struct Qdisc		*output_queue;        /* 输出队列 */
 	struct Qdisc		**output_queue_tailp;
-	struct sk_buff		*completion_queue;
+	struct sk_buff		*completion_queue;    /* 待释放的已输出帧 */
 
 #ifdef CONFIG_RPS
 	/* input_queue_head should be written by cpu owning this struct,
@@ -2844,8 +2859,8 @@ struct softnet_data {
 	unsigned int		input_queue_tail;
 #endif
 	unsigned int		dropped;
-	struct sk_buff_head	input_pkt_queue;
-	struct napi_struct	backlog;
+	struct sk_buff_head	input_pkt_queue;    /* 非NAPI暂存收到的报文帧 */
+	struct napi_struct	backlog;            /* NAPI处理相关 */
 
 };
 
@@ -2864,6 +2879,7 @@ static inline void input_queue_tail_incr_save(struct softnet_data *sd,
 #endif
 }
 
+/* 每CPU队列，存放收到的报文 */
 DECLARE_PER_CPU_ALIGNED(struct softnet_data, softnet_data);
 
 void __netif_schedule(struct Qdisc *q);

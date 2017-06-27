@@ -151,7 +151,7 @@ EXPORT_SYMBOL(eth_get_headlen);
  * The rule here is that we
  * assume 802.3 if the type field is short enough to be a length.
  * This is normal practice and works for any 'now in use' protocol.
- */
+ *//* 区分802.2/802.3及普通的ethernet报文 */
 __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 {
 	unsigned short _service_access_point;
@@ -164,6 +164,7 @@ __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 	eth = (struct ethhdr *)skb->data;
 	skb_pull_inline(skb, ETH_HLEN);
 
+    /* 地址最高字节的最后1bit，1多播，0单播 */
 	if (unlikely(is_multicast_ether_addr_64bits(eth->h_dest))) {
 		if (ether_addr_equal_64bits(eth->h_dest, dev->broadcast))
 			skb->pkt_type = PACKET_BROADCAST;
@@ -350,7 +351,7 @@ const struct header_ops eth_header_ops ____cacheline_aligned = {
  * @dev: network device
  *
  * Fill in the fields of the device structure with Ethernet-generic values.
- */
+ *//* 完成ethernet网络设备的通用部分的初始化 */
 void ether_setup(struct net_device *dev)
 {
 	dev->header_ops		= &eth_header_ops;
@@ -363,7 +364,6 @@ void ether_setup(struct net_device *dev)
 	dev->priv_flags		|= IFF_TX_SKB_SHARING;
 
 	eth_broadcast_addr(dev->broadcast);
-
 }
 EXPORT_SYMBOL(ether_setup);
 

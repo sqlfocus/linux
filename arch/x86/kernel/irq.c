@@ -209,7 +209,7 @@ u64 arch_irq_stat(void)
  * do_IRQ handles all normal device IRQ's (the special
  * SMP cross-CPU interrupts have their own specific
  * handlers).
- */
+ *//* x86硬中断处理入口 */
 __visible unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
@@ -236,7 +236,7 @@ __visible unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 
 	desc = __this_cpu_read(vector_irq[vector]);
 
-	if (!handle_irq(desc, regs)) {
+	if (!handle_irq(desc, regs)) {    /* 执行中断向量表注册函数 */
 		ack_APIC_irq();
 
 		if (desc != VECTOR_RETRIGGERED) {

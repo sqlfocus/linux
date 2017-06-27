@@ -179,7 +179,7 @@ int sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 	if (likely(skb)) {
 		HARD_TX_LOCK(dev, txq, smp_processor_id());
 		if (!netif_xmit_frozen_or_stopped(txq))
-			skb = dev_hard_start_xmit(skb, dev, txq, &ret);
+			skb = dev_hard_start_xmit(skb, dev, txq, &ret); /* 传输报文 */
 
 		HARD_TX_UNLOCK(dev, txq);
 	} else {
@@ -233,7 +233,7 @@ static inline int qdisc_restart(struct Qdisc *q, int *packets)
 	struct sk_buff *skb;
 	bool validate;
 
-	/* Dequeue packet */
+	/* 从规则队列提取下一个发送的报文，Dequeue packet */
 	skb = dequeue_skb(q, &validate, packets);
 	if (unlikely(!skb))
 		return 0;
@@ -242,7 +242,7 @@ static inline int qdisc_restart(struct Qdisc *q, int *packets)
 	dev = qdisc_dev(q);
 	txq = skb_get_tx_queue(dev, skb);
 
-	return sch_direct_xmit(skb, q, dev, txq, root_lock, validate);
+	return sch_direct_xmit(skb, q, dev, txq, root_lock, validate);  /* 发送 */
 }
 
 void __qdisc_run(struct Qdisc *q)
@@ -250,7 +250,7 @@ void __qdisc_run(struct Qdisc *q)
 	int quota = weight_p;
 	int packets;
 
-	while (qdisc_restart(q, &packets)) {
+	while (qdisc_restart(q, &packets)) {/* 检测并发送报文 */
 		/*
 		 * Ordered by possible occurrence: Postpone processing if
 		 * 1. we've exceeded packet quota
@@ -258,7 +258,7 @@ void __qdisc_run(struct Qdisc *q)
 		 */
 		quota -= packets;
 		if (quota <= 0 || need_resched()) {
-			__netif_schedule(q);
+			__netif_schedule(q);        /* 时间片耗光后，重新调度发送软中断 */
 			break;
 		}
 	}
@@ -955,6 +955,7 @@ void dev_init_scheduler(struct net_device *dev)
 	if (dev_ingress_queue(dev))
 		dev_init_scheduler_queue(dev, dev_ingress_queue(dev), &noop_qdisc);
 
+    /* 发送超时定时器 */
 	setup_timer(&dev->watchdog_timer, dev_watchdog, (unsigned long)dev);
 }
 

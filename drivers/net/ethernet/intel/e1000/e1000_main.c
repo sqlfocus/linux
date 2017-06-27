@@ -45,7 +45,7 @@ static const char e1000_copyright[] = "Copyright (c) 1999-2006 Intel Corporation
  *
  * Macro expands to...
  *   {PCI_DEVICE(PCI_VENDOR_ID_INTEL, device_id)}
- */
+ *//* e1000驱动程序支持的设备ID列表 */
 static const struct pci_device_id e1000_pci_tbl[] = {
 	INTEL_E1000_ETHERNET_DEVICE(0x1000),
 	INTEL_E1000_ETHERNET_DEVICE(0x1001),
@@ -205,6 +205,7 @@ static const struct pci_error_handlers e1000_err_handler = {
 	.resume = e1000_io_resume,
 };
 
+/* e1000网卡驱动 */
 static struct pci_driver e1000_driver = {
 	.name     = e1000_driver_name,
 	.id_table = e1000_pci_tbl,
@@ -972,6 +973,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto err_alloc_etherdev;
 
+    /* 分配struct net_device，代表新发现的网络设备；并由 ether_setup() 完成ethernet类设备的通用初始化 */
 	err = -ENOMEM;
 	netdev = alloc_etherdev(sizeof(struct e1000_adapter));
 	if (!netdev)
@@ -1027,10 +1029,11 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		}
 	}
 
-	netdev->netdev_ops = &e1000_netdev_ops;
-	e1000_set_ethtool_ops(netdev);
+	netdev->netdev_ops = &e1000_netdev_ops;    /* 初始化网卡操作集合 */
+	e1000_set_ethtool_ops(netdev);             /* 设置网卡ethtool操作集合 */
 	netdev->watchdog_timeo = 5 * HZ;
 	netif_napi_add(netdev, &adapter->napi, e1000_clean, 64);
+                                               /* 设置NAPI处理函数 e1000_clean() */
 
 	strncpy(netdev->name, pci_name(pdev), sizeof(netdev->name) - 1);
 
@@ -1211,6 +1214,7 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* reset the hardware with the new settings */
 	e1000_reset(adapter);
 
+    /* 注册设备，插入设备数据库；并完成部分功能类初始化 */
 	strcpy(netdev->name, "eth%d");
 	err = register_netdev(netdev);
 	if (err)
@@ -3834,12 +3838,12 @@ static int e1000_clean(struct napi_struct *napi, int budget)
 	tx_clean_complete = e1000_clean_tx_irq(adapter, &adapter->tx_ring[0]);
 
 	adapter->clean_rx(adapter, &adapter->rx_ring[0], &work_done, budget);
-
+                                    /* = e1000_clean_rx_irq() */
 	if (!tx_clean_complete)
 		work_done = budget;
 
 	/* If budget not fully consumed, exit the polling mode */
-	if (work_done < budget) {
+	if (work_done < budget) {       /* 无后续报文，则退出poll模式 */
 		if (likely(adapter->itr_setting & 3))
 			e1000_set_itr(adapter);
 		napi_complete_done(napi, work_done);
@@ -4489,7 +4493,7 @@ process_skb:
 				  le16_to_cpu(rx_desc->csum), skb);
 
 		e1000_receive_skb(adapter, status, rx_desc->special, skb);
-
+                                                       /* 处理报文 */
 next_desc:
 		rx_desc->status = 0;
 

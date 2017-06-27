@@ -1759,6 +1759,7 @@ static int __init ipv4_offload_init(void)
 
 fs_initcall(ipv4_offload_init);
 
+/* 注册IPv4对应的L3报文类型 */
 static struct packet_type ip_packet_type __read_mostly = {
 	.type = cpu_to_be16(ETH_P_IP),
 	.func = ip_rcv,
@@ -1874,6 +1875,7 @@ static int __init inet_init(void)
 
 	ipfrag_init();
 
+    /* 增加IPv4报文处理 */
 	dev_add_pack(&ip_packet_type);
 
 	ip_tunnel_core_init();

@@ -251,7 +251,7 @@ struct pci_ats;
 
 /*
  * The pci_dev structure is used to describe PCI devices.
- */
+ *//* 每个PCI设备对应一个此结构实例 */
 struct pci_dev {
 	struct list_head bus_list;	/* node in per-bus list */
 	struct pci_bus	*bus;		/* bus this device is on */
@@ -323,7 +323,7 @@ struct pci_dev {
 #endif
 
 	pci_channel_state_t error_state;	/* current connectivity state */
-	struct	device	dev;		/* Generic device interface */
+	struct	device	dev;		/* 设备通用描述结构，Generic device interface */
 
 	int		cfg_size;	/* Size of configuration space */
 
@@ -680,8 +680,8 @@ struct module;
 struct pci_driver {
 	struct list_head node;
 	const char *name;         /* 驱动程序名称 */
-	const struct pci_device_id *id_table;	/* 设备标识符，PCI标准定义的ID，must be non-NULL for probe to be called */
-	int  (*probe)  (struct pci_dev *dev, const struct pci_device_id *id);	/* New device inserted */
+	const struct pci_device_id *id_table;	/* 此驱动能处理的设备列列表，must be non-NULL for probe to be called */
+	int  (*probe)  (struct pci_dev *dev, const struct pci_device_id *id);	/* 匹配->id_table[]后，调用此函数，New device inserted */
 	void (*remove) (struct pci_dev *dev);	/* Device removed (NULL if not a hot-plug capable driver) */
 	int  (*suspend) (struct pci_dev *dev, pm_message_t state);	/* Device suspended */
 	int  (*suspend_late) (struct pci_dev *dev, pm_message_t state);

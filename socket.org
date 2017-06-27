@@ -19,8 +19,40 @@
  - 定义在~/include/linux/netdevice.h
 
 * 初始化流程
+一个网络设备可用，就必须被内核认可，并且关联正确的驱动程序；驱动程序把
+驱动设备所需的所有信息存储在私有数据结构中，然后与其他需要此设备的内核
+组件交互；注册和初始化的一部分由内核负责，其他部分由设备驱动程序负责
+ - 硬件初始化       :: 由驱动程序和通用总线层完成
+ - 软件初始化       :: 依赖用户配置
+ - 功能初始化       :: 依赖网络选项
+
+#+BEGIN_EXAMPLE
+内核初始化流程
+-start_kernel()                         内核C语言入口，~/init/main.c
+  -parse_early_param()
+  -parse_args()                         解析参数
+  -softirq_init()                       注册软中断, TASKLET_SOFTIRQ/HI_SOFTIRQ
+  -rest_init()
+    -kernel_thread()                    启动init进程，kernel_init()
+      -kernel_init_freeable()
+        -do_basic_setup()
+          -do_initcalls()
+            -do_initcall_level()
+              -do_one_initcall()        执行early_initcall/core_initcall()等注册的初始化函数
+              -->net_dev_init()         通过 subsys_initcall() 注册，level 4
+              -->inet_init()            通过 fs_initcall() 注册，level 5
+#+END_EXAMPLE
+
+** net_dev_init()
+流量控制、入口队列初始化，定义在~/net/core/dev.c
+#+BEGIN_EXAMPLE
+-register_pernet_device(&loopback_net_ops)   注册loopback口
+-open_softirq()                              注册软中断，NET_TX_SOFTIRQ/NET_RX_SOFTIRQ
+#+END_EXAMPLE
+
+** inet_init()
 网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
-操作集合。
+操作集合。协议栈初始化入口，定义在~/net/ipv4/af_inet.c文件
   #+BEGIN_EXAMPLE
   -inet_init()                          IPv4协议栈初始化入口，~net/ipv4/af_inet.c
     -proto_register()
@@ -36,13 +68,13 @@
       -inet_hashinfo_init()             初始化tcp_hashinfo的监听队列
       -register_pernet_subsys()         注册网络命名空间的操控集tcp_sk_ops
     -tcp_init()                         建立TCP请求的缓存，初始化各种内存限制，~/net/ipv4/tcp.c
+    -dev_add_pack()                     注册IPv4对应的l3报文类型
   #+END_EXAMPLE
 
-** net_dev_init()
-流量控制、入口队列初始化
-~/net/core/dev.c
-
 * 全局变量
+** ~dev_boot_setup~
+内核引导期间通过参数"netdev="传入的网络接口配置信息，定义在~/net/core/dev.c
+
 ** ~inet_protos[]~
 此数组定义了内核支持的知名协议，当IP层上送数据时，用于查找并确定正确的四
 层接收函数，如 =tcp_protocol= 等
@@ -74,6 +106,9 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
+** ~irq_desc[]~
+硬件中断向量表，定义在~/kernel/irq/irqdesc.c
+
 ** ~net_families[]~
 此数组定义了内核支持的所有domain - 协议族，如 =AF_UNIX= 对应的等
   #+BEGIN_EXAMPLE
@@ -104,6 +139,12 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
+** ~softirq_vec[]~
+软中断向量表，定义在~/kernel/softirq.c
+
+** ~softnet_data~
+每CPU队列，存放收到的报文，定义在~/include/linux/netdevice.h
+
 ** ~tcp_death_row~
 此结构定义了TIMEWAIT插口队列及其参数。
   #+BEGIN_EXAMPLE
@@ -122,6 +163,50 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
 
   struct inet_hashinfo tcp_hashinfo;
   #+END_EXAMPLE
+
+** ~ptype_base/ptype_all~
+内核注册的L3报文类型，包括协议值及处理函数等，~/net/core/dev.c
+
+* L2接收
+处理L2层帧的函数是由中断事件驱动的
+ - 网卡接收到帧，触发中断
+ - CPU接收中断，执行do_IRQ()
+ - 根据中断表触发驱动程序注册的函数
+ - 中断处理函数执行立即性任务
+    : 拷贝sk_buff
+    : 初始化某些sk_buff参数
+    : 调度NET_RX_SOFTIRQ
+ - 软中断执行
+
+#+BEGIN_EXAMPLE
+中断处理流程
+-do_IRQ()                               中断处理入口，~/arch/x86/kernel/irq.c
+  -e1000_intr()                         e1000网卡中断处理函数，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+    -__napi_schedule()
+      -____napi_schedule()
+        -list_add_tail()                struct napi_struct->poll_list挂接到struct softnet_data->poll_list
+        -__raise_softirq_irqoff()       触发软中断NET_RX_SOFTIRQ
+#+END_EXAMPLE
+#+BEGIN_EXAMPLE
+软中断处理流程
+-net_rx_action()                        软中断NET_RX_SOFTIRQ入口，~/net/core/dev.c
+  -napi_poll()
+    -struct napi_struct->poll()         虚拟poll
+    -->process_backlog()                非NAPI通用接口，~/net/core/dev.c
+      -__netif_receive_skb()
+        -__netif_receive_skb_core()
+          -skb_vlan_untag()
+          -struct packet_type->func()
+          -->ip_rcv()                   L3层处理入口，~/net/ipv4/ip_input.c
+    -->e1000_clean()                    e1000的NAPI接口，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+      -struct e1000_adapter->clean_rx()
+      -->e1000_clean_rx_irq()
+        -e1000_receive_skb()
+          -napi_gro_receive()
+            -napi_skb_finish()
+              -netif_receive_skb_internal()
+                -__netif_receive_skb()
+#+END_EXAMPLE
 
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立
@@ -320,4 +405,6 @@ ab
 
 * 新名词
  - NAPI         :: new API, 网络层新接口，糅合了poll/中断两种报文接收模式
+   : 如果接收到新帧时，内核还没有完成处理前几个帧的工作，驱动程序就没有必
+   : 要产生其他中断事件；然后当该队列为空时再重新开启中断功能
 
