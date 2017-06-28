@@ -1795,7 +1795,7 @@ struct net_device {
 #endif
 
 	unsigned long		gro_flush_timeout;
-	rx_handler_func_t __rcu	*rx_handler;
+	rx_handler_func_t __rcu	*rx_handler;          /* 如注册到网桥的接口 br_handle_frame() */
 	void __rcu		*rx_handler_data;
 
 #ifdef CONFIG_NET_CLS_ACT

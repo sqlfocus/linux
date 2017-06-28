@@ -4162,7 +4162,7 @@ ncls:
 	}
 
 	rx_handler = rcu_dereference(skb->dev->rx_handler);
-	if (rx_handler) {                          /* 特殊接口接收函数 */
+	if (rx_handler) {                          /* 特殊接口接收函数，如加入网桥的接口 br_handle_frame() */
 		if (pt_prev) {
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 			pt_prev = NULL;

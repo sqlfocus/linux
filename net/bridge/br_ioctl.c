@@ -98,9 +98,9 @@ static int add_del_if(struct net_bridge *br, int ifindex, int isadd)
 		return -EINVAL;
 
 	if (isadd)
-		ret = br_add_if(br, dev);
+		ret = br_add_if(br, dev);    /* 添加接口 */
 	else
-		ret = br_del_if(br, dev);
+		ret = br_del_if(br, dev);    /* 删除接口 */
 
 	return ret;
 }
@@ -375,14 +375,15 @@ int br_ioctl_deviceless_stub(struct net *net, unsigned int cmd, void __user *uar
 
 		buf[IFNAMSIZ-1] = 0;
 		if (cmd == SIOCBRADDBR)
-			return br_add_bridge(net, buf);
+			return br_add_bridge(net, buf);  /* 添加网桥 */
 
-		return br_del_bridge(net, buf);
+		return br_del_bridge(net, buf);      /* 删除网桥 */
 	}
 	}
 	return -EOPNOTSUPP;
 }
 
+/* 网桥的ioctol命令 */
 int br_dev_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
 	struct net_bridge *br = netdev_priv(dev);
@@ -392,7 +393,7 @@ int br_dev_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		return old_dev_ioctl(dev, rq, cmd);
 
 	case SIOCBRADDIF:
-	case SIOCBRDELIF:
+	case SIOCBRDELIF:    /* 添加删除接口 */
 		return add_del_if(br, rq->ifr_ifindex, cmd == SIOCBRADDIF);
 
 	}

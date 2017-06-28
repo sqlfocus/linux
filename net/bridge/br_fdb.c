@@ -38,6 +38,7 @@ static void fdb_notify(struct net_bridge *br,
 
 static u32 fdb_salt __read_mostly;
 
+/* 分配转发表项缓存 */
 int __init br_fdb_init(void)
 {
 	br_fdb_cache = kmem_cache_create("bridge_fdb_cache",

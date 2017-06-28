@@ -208,6 +208,39 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
                 -__netif_receive_skb()
 #+END_EXAMPLE
 
+* 网桥接收
+网桥是学术上的名词，交换机是物理设备的名称，它们是对应的。网桥驱动程序
+定义在~/net/bridge/br.c
+
+#+BEGIN_EXAMPLE
+软中断处理流程
+-net_rx_action()                        软中断NET_RX_SOFTIRQ入口，~/net/core/dev.c
+  -napi_poll()
+    -struct napi_struct->poll()         虚拟poll
+    -->process_backlog()                非NAPI通用接口，~/net/core/dev.c
+      -__netif_receive_skb()
+        -__netif_receive_skb_core()
+          -skb_vlan_untag()
+          -struct sk_buff->dev->rx_handler()
+          -->br_handle_frame()          网桥处理入口，~/net/bridge/br_input.c
+            -br_handle_frame_finish()
+              ---br_forward()           转发
+              ---br_flood()             广播
+              ---br_pass_frame_up()     本地接收
+                -br_netif_receive_skb()
+                  -netif_receive_skb()
+                    -netif_receive_skb_internal()
+    -->e1000_clean()                    e1000的NAPI接口，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+      -struct e1000_adapter->clean_rx()
+      -->e1000_clean_rx_irq()
+        -e1000_receive_skb()
+          -napi_gro_receive()
+            -napi_skb_finish()
+              -netif_receive_skb_internal()
+                -__netif_receive_skb()
+
+#+END_EXAMPLE
+
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立
 通信系统的一端，并返回对应的描述符。

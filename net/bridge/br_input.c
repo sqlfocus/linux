@@ -242,7 +242,7 @@ static int br_handle_local_finish(struct net *net, struct sock *sk, struct sk_bu
 /*
  * Return NULL if skb is handled
  * note: already called with rcu_read_lock
- */
+ *//* 加入网桥的物理接口的入报文处理函数 */
 rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 {
 	struct net_bridge_port *p;
@@ -314,6 +314,7 @@ rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 	}
 
 forward:
+    /* 转发 */
 	switch (p->state) {
 	case BR_STATE_FORWARDING:
 		rhook = rcu_dereference(br_should_route_hook);

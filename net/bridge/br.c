@@ -185,18 +185,21 @@ static const struct stp_proto br_stp_proto = {
 	.rcv	= br_stp_rcv,
 };
 
+/* 网桥驱动程序初始化 */
 static int __init br_init(void)
 {
 	int err;
 
 	BUILD_BUG_ON(sizeof(struct br_input_skb_cb) > FIELD_SIZEOF(struct sk_buff, cb));
 
+    /* 注册stp协议 */
 	err = stp_proto_register(&br_stp_proto);
 	if (err < 0) {
 		pr_err("bridge: can't register sap for STP\n");
 		return err;
 	}
 
+    /* 分配转发表项缓存cache */
 	err = br_fdb_init();
 	if (err)
 		goto err_out;
@@ -209,18 +212,22 @@ static int __init br_init(void)
 	if (err)
 		goto err_out2;
 
+    /* 注册到 netdev_chain 通知链 */
 	err = register_netdevice_notifier(&br_device_notifier);
 	if (err)
 		goto err_out3;
 
+    /* 注册到 switchdev_notif_chain 通知链 */
 	err = register_switchdev_notifier(&br_switchdev_notifier);
 	if (err)
 		goto err_out4;
 
+    /* 初始化netlink */
 	err = br_netlink_init();
 	if (err)
 		goto err_out5;
 
+    /* 注册ioctl操控，如添加、删除网桥命令 */
 	brioctl_set(br_ioctl_deviceless_stub);
 
 #if IS_ENABLED(CONFIG_ATM_LANE)
