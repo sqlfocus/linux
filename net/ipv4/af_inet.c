@@ -1803,7 +1803,7 @@ static int __init inet_init(void)
 	/*
 	 *	Add all the base protocols.
 	 */
-    /* 注册此协议族支持的协议，包括收报入口等 */
+    /* 注册此协议族支持的L4协议，包括L4的收报文入口、ICMP差错处理等 */
 	if (inet_add_protocol(&icmp_protocol, IPPROTO_ICMP) < 0)
 		pr_crit("%s: Cannot add ICMP protocol\n", __func__);
 	if (inet_add_protocol(&udp_protocol, IPPROTO_UDP) < 0)
@@ -1863,10 +1863,10 @@ static int __init inet_init(void)
 
 	if (init_inet_pernet_ops())
 		pr_crit("%s: Cannot init ipv4 inet pernet ops\n", __func__);
+    
 	/*
 	 *	Initialise per-cpu ipv4 mibs
-	 */
-
+	 *//* 初始化统计量 */
 	if (init_ipv4_mibs())
 		pr_crit("%s: Cannot init ipv4 mibs\n", __func__);
 

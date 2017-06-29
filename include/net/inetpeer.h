@@ -23,6 +23,7 @@ struct ipv4_addr_key {
 
 #define INETPEER_MAXKEYSZ   (sizeof(struct in6_addr) / sizeof(u32))
 
+/* 信息树的key */
 struct inetpeer_addr {
 	union {
 		struct ipv4_addr_key	a4;
@@ -32,6 +33,7 @@ struct inetpeer_addr {
 	__u16				family;
 };
 
+/* 与本机通信的主机节点信息，long-living information；所有节点组成AVL树 */
 struct inet_peer {
 	/* group together avl_left,avl_right,v4daddr to speedup lookups */
 	struct inet_peer __rcu	*avl_left, *avl_right;
@@ -44,7 +46,7 @@ struct inet_peer {
 	union {
 		struct list_head	gc_list;
 		struct rcu_head     gc_rcu;
-	};
+	};                          /* 链接至过期链表 */
 	/*
 	 * Once inet_peer is queued for deletion (refcnt == -1), following field
 	 * is not available: rid

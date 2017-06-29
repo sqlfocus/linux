@@ -1630,7 +1630,7 @@ out:
 void __init ip_init(void)
 {
 	ip_rt_init();         /* 初始化路由子系统 */
-	inet_initpeers();     /* */
+	inet_initpeers();     /* 初始化主机节点管理系统 */
 
 #if defined(CONFIG_IP_MULTICAST)
 	igmp_mc_init();       /* */

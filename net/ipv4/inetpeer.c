@@ -50,7 +50,7 @@
  *		   usually under some other lock to prevent node disappearing
  *		daddr: unchangeable
  */
-
+/* 与本机通信的主机节点长效信息 */
 static struct kmem_cache *peer_cachep __read_mostly;
 
 static LIST_HEAD(gc_list);
@@ -84,6 +84,7 @@ int inet_peer_threshold __read_mostly = 65536 + 128;	/* start to throw entries m
 int inet_peer_minttl __read_mostly = 120 * HZ;	/* TTL under high load: 120 sec */
 int inet_peer_maxttl __read_mostly = 10 * 60 * HZ;	/* usual time to live: 10 min */
 
+/* 垃圾收集函数，定时器环境执行 */
 static void inetpeer_gc_worker(struct work_struct *work)
 {
 	struct inet_peer *p, *n, *c;
@@ -141,7 +142,7 @@ void __init inet_initpeers(void)
 	/* The values below were suggested by Alexey Kuznetsov
 	 * <kuznet@ms2.inr.ac.ru>.  I don't have any opinion about the values
 	 * myself.  --SAW
-	 */
+	 *//* 定义节点信息系统的内存量 */
 	if (si.totalram <= (32768*1024)/PAGE_SIZE)
 		inet_peer_threshold >>= 1; /* max pool size about 1MB on IA32 */
 	if (si.totalram <= (16384*1024)/PAGE_SIZE)
@@ -149,11 +150,13 @@ void __init inet_initpeers(void)
 	if (si.totalram <= (8192*1024)/PAGE_SIZE)
 		inet_peer_threshold >>= 2; /* about 128KB */
 
+    /* 分配缓存 */
 	peer_cachep = kmem_cache_create("inet_peer_cache",
 			sizeof(struct inet_peer),
 			0, SLAB_HWCACHE_ALIGN | SLAB_PANIC,
 			NULL);
 
+    /* 启动垃圾收集定时器 */
 	INIT_DEFERRABLE_WORK(&gc_work, inetpeer_gc_worker);
 }
 
@@ -162,7 +165,7 @@ void __init inet_initpeers(void)
 
 /*
  * Called with local BH disabled and the pool lock held.
- */
+ *//* 搜索AVL树 */
 #define lookup(_daddr, _stack, _base)				\
 ({								\
 	struct inet_peer *u;					\
@@ -400,9 +403,10 @@ static int inet_peer_gc(struct inet_peer_base *base,
 	return cnt;
 }
 
-struct inet_peer *inet_getpeer(struct inet_peer_base *base,
-			       const struct inetpeer_addr *daddr,
-			       int create)
+/* 由其他子系统调用，搜寻AVL树 */
+struct inet_peer *inet_getpeer(struct inet_peer_base *base,  /* AVL树根 */
+                   const struct inetpeer_addr *daddr,        /* 待搜索项 */
+                   int create)                               /* 搜索不到是否创建??? */
 {
 	struct inet_peer __rcu **stack[PEER_MAXDEPTH], ***stackptr;
 	struct inet_peer *p;
@@ -414,10 +418,9 @@ struct inet_peer *inet_getpeer(struct inet_peer_base *base,
 	 */
 	rcu_read_lock();
 	sequence = read_seqbegin(&base->lock);
-	p = lookup_rcu(daddr, base);
+	p = lookup_rcu(daddr, base);     /* 读锁环境下，搜索 */
 	invalidated = read_seqretry(&base->lock, sequence);
 	rcu_read_unlock();
-
 	if (p)
 		return p;
 
@@ -427,7 +430,7 @@ struct inet_peer *inet_getpeer(struct inet_peer_base *base,
 
 	/* retry an exact lookup, taking the lock before.
 	 * At least, nodes should be hot in our cache.
-	 */
+	 */                              /* 写锁环境下，更新AVL树 */
 	write_seqlock_bh(&base->lock);
 relookup:
 	p = lookup(daddr, stack, base);
@@ -442,7 +445,7 @@ relookup:
 			goto relookup;
 	}
 	p = create ? kmem_cache_alloc(peer_cachep, GFP_ATOMIC) : NULL;
-	if (p) {
+	if (p) {                         /* 分配缓存 */
 		p->daddr = *daddr;
 		atomic_set(&p->refcnt, 1);
 		atomic_set(&p->rid, 0);
@@ -455,7 +458,7 @@ relookup:
 		INIT_LIST_HEAD(&p->gc_list);
 
 		/* Link the node. */
-		link_to_pool(p, base);
+		link_to_pool(p, base);       /* 插入 */
 		base->total++;
 	}
 	write_sequnlock_bh(&base->lock);

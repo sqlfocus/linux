@@ -91,7 +91,7 @@
 内核引导期间通过参数"netdev="传入的网络接口配置信息，定义在~/net/core/dev.c
 
 ** ~inet_protos[]~
-此数组定义了内核支持的知名协议，当IP层上送数据时，用于查找并确定正确的四
+此数组定义了内核支持的知名L4协议，当IP层上送数据时，用于查找并确定正确的四
 层接收函数，如 =tcp_protocol= 等
   #+BEGIN_EXAMPLE
   ~/net/ipv4/protocol.c
@@ -153,6 +153,9 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
      ...
   };
   #+END_EXAMPLE
+
+** ~raw_v4_hashinfo~
+存储用户态创建的SOCK_RAW插口的hash表，定义在~/net/ipv4/raw.c
 
 ** ~softirq_vec[]~
 软中断向量表，定义在~/kernel/softirq.c
@@ -317,6 +320,16 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
 
 #+BEGIN_EXAMPLE
 -ip_fragment()                          IP分段入口，~/net/ipv4/ip_output.c
+#+END_EXAMPLE
+
+* RAW socket
+通过建立此类插口，用户程序可跳过内核的L4,甚至L3层，为定制化通信协议提供
+了便利。
+
+#+BEGIN_EXAMPLE
+-raw_local_deliver()                       RAW报文上送入口，~/net/ipv4/raw.c
+  -raw_v4_input()
+    -raw_rcv()
 #+END_EXAMPLE
 
 * socket()
