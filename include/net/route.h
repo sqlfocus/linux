@@ -48,6 +48,7 @@
 struct fib_nh;
 struct fib_info;
 struct uncached_list;
+/* 路由表 */
 struct rtable {
 	struct dst_entry	dst;
 

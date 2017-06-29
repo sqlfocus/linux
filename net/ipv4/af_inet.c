@@ -1872,9 +1872,10 @@ static int __init inet_init(void)
 
 	ipv4_proc_init();
 
+    /* 分片重组系统初始化 */
 	ipfrag_init();
 
-    /* 增加IPv4报文处理 */
+    /* 注册IPv4报文类型 */
 	dev_add_pack(&ip_packet_type);
 
 	ip_tunnel_core_init();

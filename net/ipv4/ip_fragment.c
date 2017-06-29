@@ -651,7 +651,7 @@ out_fail:
 	return err;
 }
 
-/* Process an incoming IP datagram fragment. */
+/* 分片重组入口，Process an incoming IP datagram fragment. */
 int ip_defrag(struct net *net, struct sk_buff *skb, u32 user)
 {
 	struct net_device *dev = skb->dev ? : skb_dst(skb)->dev;
@@ -881,7 +881,7 @@ static struct pernet_operations ip4_frags_ops = {
 	.init = ipv4_frags_init_net,
 	.exit = ipv4_frags_exit_net,
 };
-
+/* 分片重组系统初始化 */
 void __init ipfrag_init(void)
 {
 	ip4_frags_ctl_register();
