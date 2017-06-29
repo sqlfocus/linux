@@ -252,7 +252,7 @@ static void spec_dst_fill(__be32 *spec_dst, struct sk_buff *skb)
  * Caller should clear *opt, and set opt->data.
  * If opt == NULL, then skb->data should point to IP header.
  */
-
+/* 解析IP头 */
 int ip_options_compile(struct net *net,
 		       struct ip_options *opt, struct sk_buff *skb)
 {

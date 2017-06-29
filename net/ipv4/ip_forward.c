@@ -71,9 +71,11 @@ static int ip_forward_finish(struct net *net, struct sock *sk, struct sk_buff *s
 	if (unlikely(opt->optlen))
 		ip_forward_options(skb);
 
+    /* 调用 ip_output() */
 	return dst_output(net, sk, skb);
 }
 
+/* L3层转发入口函数 */
 int ip_forward(struct sk_buff *skb)
 {
 	u32 mtu;
@@ -109,6 +111,7 @@ int ip_forward(struct sk_buff *skb)
 	if (ip_hdr(skb)->ttl <= 1)
 		goto too_many_hops;
 
+    /* IPSec相关钩子 */
 	if (!xfrm4_route_forward(skb))
 		goto drop;
 
@@ -117,12 +120,13 @@ int ip_forward(struct sk_buff *skb)
 	if (opt->is_strictroute && rt->rt_uses_gateway)
 		goto sr_failed;
 
+    /* 检查是否因为分片矛盾需要发送icmp消息 */
 	IPCB(skb)->flags |= IPSKB_FORWARDED | IPSKB_FRAG_SEGS;
 	mtu = ip_dst_mtu_maybe_forward(&rt->dst, true);
 	if (ip_exceeds_mtu(skb, mtu)) {
 		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);
 		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
-			  htonl(mtu));
+                  htonl(mtu));
 		goto drop;
 	}
 
@@ -131,19 +135,21 @@ int ip_forward(struct sk_buff *skb)
 		goto drop;
 	iph = ip_hdr(skb);
 
-	/* Decrease ttl after skb cow done */
+	/* 减少TTL，Decrease ttl after skb cow done */
 	ip_decrease_ttl(iph);
 
 	/*
 	 *	We now generate an ICMP HOST REDIRECT giving the route
 	 *	we calculated.
-	 */
+	 *//* 是否需要发送重定向icmp消息 */
 	if (IPCB(skb)->flags & IPSKB_DOREDIRECT && !opt->srr &&
 	    !skb_sec_path(skb))
 		ip_rt_send_redirect(skb);
 
+    /* 设置QoS所需的优先级 */
 	skb->priority = rt_tos2priority(iph->tos);
 
+    /* 转发hook点，后续由*_finish()完成转发 */
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD,
 		       net, NULL, skb, skb->dev, rt->dst.dev,
 		       ip_forward_finish);

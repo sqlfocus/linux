@@ -214,9 +214,9 @@
  */
 
 /* Don't change this without changing skb_csum_unnecessary! */
-#define CHECKSUM_NONE		0
+#define CHECKSUM_NONE		0       /* ->csum中的校验和无效 */
 #define CHECKSUM_UNNECESSARY	1
-#define CHECKSUM_COMPLETE	2
+#define CHECKSUM_COMPLETE	2       /* NIC已经计算了L4报头及伪装头的校验和，软件无需再做校验 */
 #define CHECKSUM_PARTIAL	3
 
 /* Maximum value in skb->csum_level */
@@ -658,7 +658,7 @@ struct sk_buff {
 	 * first. This is owned by whoever has the skb queued ATM.
 	 */
 	char			cb[48] __aligned(8);       /* 私有存储区，为L2-L4在各层内使用 */
-
+                                               /* L3为struct inet_skb_parm */
 	unsigned long		_skb_refdst;
 	void			(*destructor)(struct sk_buff *skb);
 #ifdef CONFIG_XFRM
@@ -722,7 +722,7 @@ struct sk_buff {
 	__u8			nfctinfo:3;
 
 	__u8			nf_trace:1;
-	__u8			ip_summed:2;
+	__u8			ip_summed:2;           /* 表征->csum是否有效， CHECKSUM_NONE */
 	__u8			ooo_okay:1;
 	__u8			l4_hash:1;
 	__u8			sw_hash:1;
@@ -757,9 +757,9 @@ struct sk_buff {
 #endif
 
 	union {
-		__wsum		csum;                /* */
+		__wsum		csum;                /* L4层校验和 */
 		struct {
-			__u16	csum_start;
+			__u16	csum_start;          /* 发送报文由硬件计算校验和时，结果存放的地方*/
 			__u16	csum_offset;
 		};
 	};
@@ -794,7 +794,7 @@ struct sk_buff {
 
 	__be16			protocol;          /* L3层协议 */
 	__u16			transport_header;
-	__u16			network_header;
+	__u16			network_header;    /* L3层头偏移，相对于->head */
 	__u16			mac_header;
 
 	/* private: */

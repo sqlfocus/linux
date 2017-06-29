@@ -41,6 +41,7 @@
               -do_one_initcall()        执行early_initcall/core_initcall()等注册的初始化函数
               -->net_dev_init()         通过 subsys_initcall() 注册，level 4
               -->inet_init()            通过 fs_initcall() 注册，level 5
+                -ip_init()              IPv4初始化
 #+END_EXAMPLE
 
 ** net_dev_init()
@@ -70,6 +71,15 @@
     -tcp_init()                         建立TCP请求的缓存，初始化各种内存限制，~/net/ipv4/tcp.c
     -dev_add_pack()                     注册IPv4对应的l3报文类型
   #+END_EXAMPLE
+
+** ip_init()
+此函数初始化IPv4协议栈，定义在~/net/ipv4/ip_output.c
+#+BEGIN_EXAMPLE
+-ip_init()
+  -ip_rt_init()                         路由子系统初始化
+  -inet_initpeers()                     管理IP端点的基础系统
+  -igmp_mc_init()
+#+END_EXAMPLE
 
 * 全局变量
 ** ~dev_boot_setup~
@@ -239,6 +249,33 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
               -netif_receive_skb_internal()
                 -__netif_receive_skb()
 
+#+END_EXAMPLE
+
+* L3接收
+3层是网络协议的核心层，涉及邻居系统、路由系统、netfilter点等众多子系统，
+关联耦合性、复杂度相比其他都较高。
+#+BEGIN_EXAMPLE
+-ip_rcv()                           L3层处理入口，~/net/ipv4/ip_input.c
+  -ip_rcv_finish()
+    -ip_route_input_noref()         查路由，~/net/ipv4/route.c
+    -ip_rcv_options()               处理ip选项
+    -dst_input()
+      -->ip_local_deliver()         上传L4
+        -ip_defrag()                分片重组
+        -ip_local_deliver_finish()
+          -raw_local_deliver()
+            -raw_v4_input()         raw类型报文，~/net/ipv4/raw.c
+          ---tcp_v4_rcv()           TCP报文, ~/net/ipv4/tcp_ipv4.c
+          ---udp_rcv()              UDP报文, ~/net/ipv4/udp.c
+          ---icmp_rcv()             ICMP报文, ~/net/ipv4/icmp.c
+      -->ip_forward()               转发，~/net/ipv4/ip_forward.c
+        -ip_forward_finish()
+          -ip_forward_options()     构建ip选项
+          -dst_output()
+            -->ip_output()          ~/net/ipv4/ip_output.c
+              -ip_finish_output()
+                -ip_finish_output2()
+                  -dst_neigh_output()   邻居系统
 #+END_EXAMPLE
 
 * socket()

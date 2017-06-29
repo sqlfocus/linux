@@ -1830,8 +1830,7 @@ static int __init inet_init(void)
 
 	/*
 	 *	Set the IP module up
-	 */
-
+	 *//* L3层初始化 */
 	ip_init();
 
 	tcp_v4_init();

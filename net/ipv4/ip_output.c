@@ -219,7 +219,7 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	if (unlikely(!neigh))
 		neigh = __neigh_create(&arp_tbl, &nexthop, dev, false);
 	if (!IS_ERR(neigh)) {
-		int res = dst_neigh_output(dst, neigh, skb);
+		int res = dst_neigh_output(dst, neigh, skb);  /* 邻居系统 */
 
 		rcu_read_unlock_bh();
 		return res;
@@ -289,13 +289,16 @@ static int ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *sk
 		return dst_output(net, sk, skb);
 	}
 #endif
+    /* GSO */
 	mtu = ip_skb_dst_mtu(sk, skb);
 	if (skb_is_gso(skb))
 		return ip_finish_output_gso(net, sk, skb, mtu);
 
+    /* 分片 */
 	if (skb->len > mtu || (IPCB(skb)->flags & IPSKB_FRAG_PMTU))
 		return ip_fragment(net, sk, skb, mtu, ip_finish_output2);
 
+    /* 普通转发 */
 	return ip_finish_output2(net, sk, skb);
 }
 
@@ -361,6 +364,7 @@ int ip_mc_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }
 
+/* 转发发送入口 */
 int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev;
@@ -370,6 +374,7 @@ int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 	skb->dev = dev;
 	skb->protocol = htons(ETH_P_IP);
 
+    /* 路由后hook点 */
 	return NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,
 			    net, sk, skb, NULL, dev,
 			    ip_finish_output,
@@ -1620,12 +1625,13 @@ out:
 	ip_rt_put(rt);
 }
 
+/* L3层初始化，链接到__section(.init.text)段 */
 void __init ip_init(void)
 {
-	ip_rt_init();
-	inet_initpeers();
+	ip_rt_init();         /* 初始化路由子系统 */
+	inet_initpeers();     /* */
 
 #if defined(CONFIG_IP_MULTICAST)
-	igmp_mc_init();
+	igmp_mc_init();       /* */
 #endif
 }

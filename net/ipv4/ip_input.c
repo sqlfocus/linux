@@ -200,8 +200,10 @@ static int ip_local_deliver_finish(struct net *net, struct sock *sk, struct sk_b
 		int raw;
 
 	resubmit:
+        /* raw报文上送 */
 		raw = raw_local_deliver(skb, protocol);
 
+        /* 内核协议上送，如TCP/tcp_v4_rcv(), UDP/udp_rcv(), ICMP/icmp_rcv() */
 		ipprot = rcu_dereference(inet_protos[protocol]);
 		if (ipprot) {
 			int ret;
@@ -213,6 +215,7 @@ static int ip_local_deliver_finish(struct net *net, struct sock *sk, struct sk_b
 				}
 				nf_reset(skb);
 			}
+            /* 上送具体的L4协议 */
 			ret = ipprot->handler(skb);
 			if (ret < 0) {
 				protocol = -ret;
@@ -249,11 +252,13 @@ int ip_local_deliver(struct sk_buff *skb)
 	 */
 	struct net *net = dev_net(skb->dev);
 
+    /* 分片重组 */
 	if (ip_is_fragment(ip_hdr(skb))) {
 		if (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))
 			return 0;
 	}
 
+    /* 本地上送hook点 */
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_IN,
 		       net, NULL, skb, skb->dev, NULL,
 		       ip_local_deliver_finish);
@@ -271,7 +276,7 @@ static inline bool ip_rcv_options(struct sk_buff *skb)
 	   into account that combination of IP options
 	   and running sniffer is extremely rare condition.
 					      --ANK (980813)
-	*/
+	*//* copy on write, 写入时才拷贝；要处理选项，有可能需要修改IP头，因此clone缓冲区副本 */
 	if (skb_cow(skb, skb_headroom(skb))) {
 		__IP_INC_STATS(dev_net(dev), IPSTATS_MIB_INDISCARDS);
 		goto drop;
@@ -281,11 +286,13 @@ static inline bool ip_rcv_options(struct sk_buff *skb)
 	opt = &(IPCB(skb)->opt);
 	opt->optlen = iph->ihl*4 - sizeof(struct iphdr);
 
+    /* 解析ip选项，结果存储在struct sk_buff->cb[] 中，struct inet_skb_parm */
 	if (ip_options_compile(dev_net(dev), opt, skb)) {
 		__IP_INC_STATS(dev_net(dev), IPSTATS_MIB_INHDRERRORS);
 		goto drop;
 	}
 
+    /* srr选项处理，检查源IP路由选项 */
 	if (unlikely(opt->srr)) {
 		struct in_device *in_dev = __in_dev_get_rcu(dev);
 
@@ -339,7 +346,7 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 	/*
 	 *	Initialise the virtual path cache for the packet. It describes
 	 *	how the packet travels inside Linux networking.
-	 */
+	 *//* 查路由，以便于决定转发、上送L4, 还是丢包 */
 	if (!skb_valid_dst(skb)) {
 		int err = ip_route_input_noref(skb, iph->daddr, iph->saddr,
 					       iph->tos, dev);
@@ -351,6 +358,7 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 	}
 
 #ifdef CONFIG_IP_ROUTE_CLASSID
+    /* 更新QoS策略(TC)使用的统计数据 */
 	if (unlikely(skb_dst(skb)->tclassid)) {
 		struct ip_rt_acct *st = this_cpu_ptr(ip_rt_acct);
 		u32 idx = skb_dst(skb)->tclassid;
@@ -361,6 +369,7 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 	}
 #endif
 
+    /* 处理IP选项 */
 	if (iph->ihl > 5 && ip_rcv_options(skb))
 		goto drop;
 
@@ -393,6 +402,7 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 			goto drop;
 	}
 
+    /* 上送L4或转发，调用 ip_local_deliver()/ip_forward() */
 	return dst_input(skb);
 
 drop:
@@ -411,7 +421,7 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 
 	/* When the interface is in promisc. mode, drop all the crap
 	 * that it receives, do not try to analyse it.
-	 */
+	 *//* 混杂模式，丢弃非本地报文 */
 	if (skb->pkt_type == PACKET_OTHERHOST)
 		goto drop;
 
@@ -419,6 +429,8 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	net = dev_net(dev);
 	__IP_UPD_PO_STATS(net, IPSTATS_MIB_IN, skb->len);
 
+    /* 检查报文计数>1, 大于1意味着内核其他部分拥有对该缓冲区的引用，如嗅探器等；
+       如果>1, 就<TAKECARE!!!>clone出一份缓冲区副本，方便其后续修改该封包 */
 	skb = skb_share_check(skb, GFP_ATOMIC);
 	if (!skb) {
 		__IP_INC_STATS(net, IPSTATS_MIB_INDISCARDS);
@@ -428,7 +440,7 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	if (!pskb_may_pull(skb, sizeof(struct iphdr)))
 		goto inhdr_error;
 
-	iph = ip_hdr(skb);
+	iph = ip_hdr(skb);       /* 获取L3层头 */
 
 	/*
 	 *	RFC1122: 3.2.1.2 MUST silently discard any IP frame that fails the checksum.
@@ -440,7 +452,6 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	 *	3.	Checksums correctly. [Speed optimisation for later, skip loopback checksums]
 	 *	4.	Doesn't have a bogus length
 	 */
-
 	if (iph->ihl < 5 || iph->version != 4)
 		goto inhdr_error;
 
@@ -451,13 +462,13 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 		       IPSTATS_MIB_NOECTPKTS + (iph->tos & INET_ECN_MASK),
 		       max_t(unsigned short, 1, skb_shinfo(skb)->gso_segs));
 
+    /* 确保缓存区至少包含全部的IP头 */
 	if (!pskb_may_pull(skb, iph->ihl*4))
 		goto inhdr_error;
-
 	iph = ip_hdr(skb);
 
 	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl)))
-		goto csum_error;
+		goto csum_error;     /* 计算校验和 */
 
 	len = ntohs(iph->tot_len);
 	if (skb->len < len) {
@@ -469,21 +480,23 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	/* Our transport medium may have padded the buffer out. Now we know it
 	 * is IP we can trim to the true length of the frame.
 	 * Note this now means skb->len holds ntohs(iph->tot_len).
-	 */
+	 *//* 为了满足L2层协议最小帧长，可能在有效载荷后添加了填充，调整去掉填充 */
 	if (pskb_trim_rcsum(skb, len)) {
 		__IP_INC_STATS(net, IPSTATS_MIB_INDISCARDS);
 		goto drop;
 	}
 
 	skb->transport_header = skb->network_header + iph->ihl*4;
+                             /* 设定传输层头，方便后续L4继续处理 */
 
 	/* Remove any debris in the socket control block */
 	memset(IPCB(skb), 0, sizeof(struct inet_skb_parm));
 	IPCB(skb)->iif = skb->skb_iif;
-
+                             /* 初始化私有控制块儿 */
 	/* Must drop socket now because of tproxy. */
 	skb_orphan(skb);
 
+    /* netfilter hook点，符合过滤规则后由*_finish()继续处理：如路由、转发等 */
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_PRE_ROUTING,
 		       net, NULL, skb, dev, NULL,
 		       ip_rcv_finish);

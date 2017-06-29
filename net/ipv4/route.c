@@ -1471,7 +1471,7 @@ struct rtable *rt_dst_alloc(struct net_device *dev,
 
 		rt->dst.output = ip_output;
 		if (flags & RTCF_LOCAL)
-			rt->dst.input = ip_local_deliver;
+			rt->dst.input = ip_local_deliver;    /* 设置上传本地函数 */
 	}
 
 	return rt;
@@ -1682,7 +1682,7 @@ rt_cache:
 		rth->rt_table_id = res->table->tb_id;
 	RT_CACHE_STAT_INC(in_slow_tot);
 
-	rth->dst.input = ip_forward;
+	rth->dst.input = ip_forward;        /* 设置转发函数 */
 
 	rt_set_nexthop(rth, daddr, res, fnhe, res->fi, res->type, itag);
 	if (lwtunnel_output_redirect(rth->dst.lwtstate)) {
