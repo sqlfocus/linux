@@ -46,17 +46,17 @@ enum {
  *	Neighbor Cache Entry States.
  */
 
-#define NUD_INCOMPLETE	0x01
-#define NUD_REACHABLE	0x02
-#define NUD_STALE	0x04
-#define NUD_DELAY	0x08
-#define NUD_PROBE	0x10
-#define NUD_FAILED	0x20
+#define NUD_INCOMPLETE	0x01    /* 请求已被送出，还没收到应答 */
+#define NUD_REACHABLE	0x02    /* 邻居地址已被放入缓存，并且邻居可达 */
+#define NUD_STALE	0x04        /* 邻居地址已存在，但已经一段时间没有确认了；当下一个报文发往此邻居时，需要启动可达性确认 */
+#define NUD_DELAY	0x08        /* NUA_STATE状态时发送一个报文到邻居，即转变为此状态；在一定窗口期内，证实邻居的可达性(比如收到邻居的应答)，过了窗口期，则进入NUM_PROBE */
+#define NUD_PROBE	0x10        /* NUA_DELAY在指定的窗口期内，未收到可达性验证，则进入此状态，并开启发送邻居请求 */
+#define NUD_FAILED	0x20        /* 请求失败，邻居不可达 */
 
 /* Dummy states */
-#define NUD_NOARP	0x40
-#define NUD_PERMANENT	0x80
-#define NUD_NONE	0x00
+#define NUD_NOARP	0x40        /* 不需要任何协议用于L3到L2之间的地址映射 */
+#define NUD_PERMANENT	0x80    /* 邻居的L2地址是静态配置 */
+#define NUD_NONE	0x00        /* 邻居刚刚被创建，还没有状态可用 */
 
 /* NUD_NOARP & NUD_PERMANENT are pseudostates, they never change
    and make no address resolution or NUD.

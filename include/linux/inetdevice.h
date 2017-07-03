@@ -19,7 +19,7 @@ struct ipv4_devconf {
 };
 
 #define MC_HASH_SZ_LOG 9
-
+/* 网络设备的IP配置信息 */
 struct in_device {
 	struct net_device	*dev;
 	atomic_t		refcnt;
@@ -41,7 +41,7 @@ struct in_device {
 	struct timer_list	mr_gq_timer;	/* general query timer */
 	struct timer_list	mr_ifc_timer;	/* interface change timer */
 
-	struct neigh_parms	*arp_parms;
+	struct neigh_parms	*arp_parms;    /* arp控制参数 */
 	struct ipv4_devconf	cnf;
 	struct rcu_head		rcu_head;
 };

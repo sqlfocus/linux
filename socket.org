@@ -41,17 +41,14 @@
               -do_one_initcall()        执行early_initcall/core_initcall()等注册的初始化函数
               -->net_dev_init()         通过 subsys_initcall() 注册，level 4
               -->inet_init()            通过 fs_initcall() 注册，level 5
+                -arp_init()             ARP邻居子系统协议初始化
                 -ip_init()              IPv4初始化
                 -ipfrag_init()          分片重组系统初始化
                 -dev_add_pack()         注册IPv4报文类型，ip_packet_type，包含了L3入口ip_rcv()
 #+END_EXAMPLE
 
-** net_dev_init()
-流量控制、入口队列初始化，定义在~/net/core/dev.c
-#+BEGIN_EXAMPLE
--register_pernet_device(&loopback_net_ops)   注册loopback口
--open_softirq()                              注册软中断，NET_TX_SOFTIRQ/NET_RX_SOFTIRQ
-#+END_EXAMPLE
+** arp_init()
+注册ARP邻居子系统，定义在~/net/ipv4/arp.c
 
 ** inet_init()
 网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
@@ -85,6 +82,13 @@
 
 ** ipfrag_init()
 此函数初始化分片重组所需的变量、hash方法等，定义在~/net/ipv4/ip_fragment.c
+
+** net_dev_init()
+流量控制、入口队列初始化，定义在~/net/core/dev.c
+#+BEGIN_EXAMPLE
+-register_pernet_device(&loopback_net_ops)   注册loopback口
+-open_softirq()                              注册软中断，NET_TX_SOFTIRQ/NET_RX_SOFTIRQ
+#+END_EXAMPLE
 
 * 全局变量
 ** ~dev_boot_setup~
@@ -123,6 +127,9 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
 
 ** ~irq_desc[]~
 硬件中断向量表，定义在~/kernel/irq/irqdesc.c
+
+** ~neigh_tables[]~
+内核注册的支持的邻居协议，定义在~/net/core/neighbour.c
 
 ** ~net_families[]~
 此数组定义了内核支持的所有domain - 协议族，如 =AF_UNIX= 对应的等
@@ -184,6 +191,8 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
 
 ** ~ptype_base/ptype_all~
 内核注册的L3报文类型，包括协议值及处理函数等，~/net/core/dev.c
+ - arp_packet_type          :: ARP报文，net/ipv4/arp.c
+ - ip_packet_type           :: IP报文，net/ipv4/af_inet.c
 
 * L2接收
 处理L2层帧的函数是由中断事件驱动的
@@ -331,6 +340,32 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   -raw_v4_input()
     -raw_rcv()
 #+END_EXAMPLE
+
+* 邻居子系统
+如果一台主机和你的计算机连接在同一LAN上，也就是说你和这台主机通过一个共
+享介质相连或点对点直接相连，那么它就是你的邻居(neighbor)
+
+不是邻居的主机间的通信必须通过网关或路由器
+
+需要邻居子系统的根源：网络体系的层次描述(邻居间交互数据可通过多种二层介
+质，而三层不需要关心使用哪种物理介质，因此需要L3地址)和共享介质的存在(
+任意主机发出的任何帧，都会被直接连接到该介质的所有主机收到，因此需要L2
+地址)；而邻居系统完成L3到L2地址的转换
+
+#+BEGIN_EXAMPLE
+-dst_neigh_output()                      发送入口，~/include/net/dst.h
+  -struct neighbour->output()
+    -neigh_resolve_output()              IPv4对应的arp邻居子系统，~/net/core/neighbour.c
+      -neigh_event_send()                请求arp???
+      -dev_hard_header()                 构建L2???
+      -dev_queue_xmit()                  发送
+#+END_EXAMPLE
+
+** 免费ARP
+主要用于主动性网络变更，应用场景
+ - L2地址发生变化
+ - 重复地址探测
+ - 虚拟IP迁移
 
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立

@@ -1705,17 +1705,17 @@ put_and_return:
 
 	return ret;
 
-no_tcp_socket:
+no_tcp_socket:    /* 找不到监听插口，或已建立的链接插口 */
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
 		goto discard_it;
 
-	if (tcp_checksum_complete(skb)) {
+	if (tcp_checksum_complete(skb)) {      /* 校验和不对则不回RST */
 csum_error:
 		__TCP_INC_STATS(net, TCP_MIB_CSUMERRORS);
 bad_packet:
 		__TCP_INC_STATS(net, TCP_MIB_INERRS);
 	} else {
-		tcp_v4_send_reset(NULL, skb);
+		tcp_v4_send_reset(NULL, skb);      /* 找不到监听插口，回应RST */
 	}
 
 discard_it:

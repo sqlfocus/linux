@@ -88,6 +88,7 @@ static const struct file_operations neigh_stat_seq_fops;
    not make callbacks to neighbour tables.
  */
 
+/* 处理neighbour结构不能删除的临时场景 */
 static int neigh_blackhole(struct neighbour *neigh, struct sk_buff *skb)
 {
 	kfree_skb(skb);
@@ -397,6 +398,7 @@ static struct neigh_hash_table *neigh_hash_grow(struct neigh_table *tbl,
 	return new_nht;
 }
 
+/* 查找邻居 */
 struct neighbour *neigh_lookup(struct neigh_table *tbl, const void *pkey,
 			       struct net_device *dev)
 {
@@ -448,6 +450,7 @@ struct neighbour *neigh_lookup_nodev(struct neigh_table *tbl, struct net *net,
 }
 EXPORT_SYMBOL(neigh_lookup_nodev);
 
+/* 创建邻居节点 */
 struct neighbour *__neigh_create(struct neigh_table *tbl, const void *pkey,
 				 struct net_device *dev, bool want_ref)
 {
@@ -462,11 +465,12 @@ struct neighbour *__neigh_create(struct neigh_table *tbl, const void *pkey,
 		goto out;
 	}
 
+    /* 存储hash key */
 	memcpy(n->primary_key, pkey, key_len);
 	n->dev = dev;
 	dev_hold(dev);
 
-	/* Protocol specific setup. */
+	/* 邻居协议相关初始化，Protocol specific setup. */
 	if (tbl->constructor &&	(error = tbl->constructor(n)) < 0) {
 		rc = ERR_PTR(error);
 		goto out_neigh_release;
@@ -480,15 +484,17 @@ struct neighbour *__neigh_create(struct neigh_table *tbl, const void *pkey,
 		}
 	}
 
-	/* Device specific setup. */
+	/* 设备相关初始化，Device specific setup. */
 	if (n->parms->neigh_setup &&
 	    (error = n->parms->neigh_setup(n)) < 0) {
 		rc = ERR_PTR(error);
 		goto out_neigh_release;
 	}
 
+    /* 设置可达到属性的起始时间，有意减少一小段时间，以尽快重新确认 */
 	n->confirmed = jiffies - (NEIGH_VAR(n->parms, BASE_REACHABLE_TIME) << 1);
 
+    /* 插入hash表 */
 	write_lock_bh(&tbl->lock);
 	nht = rcu_dereference_protected(tbl->nht,
 					lockdep_is_held(&tbl->lock));
@@ -717,7 +723,7 @@ EXPORT_SYMBOL(neigh_destroy);
    disable fast path.
 
    Called with write_locked neigh.
- */
+*//* 邻居从 NUD_REACHABLE 进入其他状态，调整输出函数 */
 static void neigh_suspect(struct neighbour *neigh)
 {
 	neigh_dbg(2, "neigh %p is suspected\n", neigh);
@@ -729,7 +735,7 @@ static void neigh_suspect(struct neighbour *neigh)
    enable fast path.
 
    Called with write_locked neigh.
- */
+*//* 邻居进入 NUD_REACHABLE 状态后调用此函数，调整对应的输出函数 */
 static void neigh_connect(struct neighbour *neigh)
 {
 	neigh_dbg(2, "neigh %p is connected\n", neigh);
@@ -1055,21 +1061,21 @@ static void neigh_update_hhs(struct neighbour *neigh)
    -- lladdr is new lladdr or NULL, if it is not supplied.
    -- new    is new state.
    -- flags
-	NEIGH_UPDATE_F_OVERRIDE allows to override existing lladdr,
+	NEIGH_UPDATE_F_OVERRIDE allows to override existing lladdr, 当前的L2地址可被覆盖
 				if it is different.
 	NEIGH_UPDATE_F_WEAK_OVERRIDE will suspect existing "connected"
 				lladdr instead of overriding it
 				if it is different.
-	NEIGH_UPDATE_F_ADMIN	means that the change is administrative.
+	NEIGH_UPDATE_F_ADMIN	means that the change is administrative；来自用户空间的命令
 
 	NEIGH_UPDATE_F_OVERRIDE_ISROUTER allows to override existing
 				NTF_ROUTER flag.
-	NEIGH_UPDATE_F_ISROUTER	indicates if the neighbour is known as
+	NEIGH_UPDATE_F_ISROUTER	indicates if the neighbour is known as  邻居为路由器
 				a router.
 
    Caller MUST hold reference count on the entry.
  */
-
+/* 改变邻居状态 */
 int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 		 u32 flags)
 {
@@ -1085,22 +1091,23 @@ int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 	old    = neigh->nud_state;
 	err    = -EPERM;
 
-	if (!(flags & NEIGH_UPDATE_F_ADMIN) &&
+	if (!(flags & NEIGH_UPDATE_F_ADMIN) &&     /* NUD_NOARP 或 NUD_PERMANENT 只能手工更改 */
 	    (old & (NUD_NOARP | NUD_PERMANENT)))
 		goto out;
-	if (neigh->dead)
+	if (neigh->dead)                           /* 待删除??? */
 		goto out;
 
+    /* 新状态将使得邻居无效 */
 	if (!(new & NUD_VALID)) {
-		neigh_del_timer(neigh);
+		neigh_del_timer(neigh);        /* 停止定时器 */
 		if (old & NUD_CONNECTED)
-			neigh_suspect(neigh);
-		neigh->nud_state = new;
+			neigh_suspect(neigh);      /* 设置输出函数，重新探测邻居状态 */
+		neigh->nud_state = new;        /* 设置新状态 */
 		err = 0;
-		notify = old & NUD_VALID;
+		notify = old & NUD_VALID;      /* 旧状态有效，则告知arpd */
 		if ((old & (NUD_INCOMPLETE | NUD_PROBE)) &&
 		    (new & NUD_FAILED)) {
-			neigh_invalidate(neigh);
+			neigh_invalidate(neigh);   /* 设置邻居无效 */
 			notify = 1;
 		}
 		goto out;
@@ -1131,14 +1138,14 @@ int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 
 	if (new & NUD_CONNECTED)
 		neigh->confirmed = jiffies;
-	neigh->updated = jiffies;
+	neigh->updated = jiffies;         /* 更新时间戳 */
 
 	/* If entry was valid and address is not changed,
 	   do not change entry state, if new one is STALE.
 	 */
 	err = 0;
 	update_isrouter = flags & NEIGH_UPDATE_F_OVERRIDE_ISROUTER;
-	if (old & NUD_VALID) {
+	if (old & NUD_VALID) {            /* 旧状态为有效，且地址不变的情况下，不变更到新状态 */
 		if (lladdr != neigh->ha && !(flags & NEIGH_UPDATE_F_OVERRIDE)) {
 			update_isrouter = 0;
 			if ((flags & NEIGH_UPDATE_F_WEAK_OVERRIDE) &&
@@ -1154,7 +1161,7 @@ int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 		}
 	}
 
-	if (new != old) {
+	if (new != old) {                 /* 变更状态 */
 		neigh_del_timer(neigh);
 		if (new & NUD_PROBE)
 			atomic_set(&neigh->probes, 0);
@@ -1167,7 +1174,7 @@ int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 		notify = 1;
 	}
 
-	if (lladdr != neigh->ha) {
+	if (lladdr != neigh->ha) {        /* 更新地址及缓存 */
 		write_seqlock(&neigh->ha_lock);
 		memcpy(&neigh->ha, lladdr, dev->addr_len);
 		write_sequnlock(&neigh->ha_lock);
@@ -1179,11 +1186,11 @@ int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new,
 	}
 	if (new == old)
 		goto out;
-	if (new & NUD_CONNECTED)
+	if (new & NUD_CONNECTED)          /* 随状态更改输出函数 */
 		neigh_connect(neigh);
 	else
 		neigh_suspect(neigh);
-	if (!(old & NUD_VALID)) {
+	if (!(old & NUD_VALID)) {         /* 旧状态无效，新状态有效，则发送排队的报文 */
 		struct sk_buff *skb;
 
 		/* Again: avoid dead loop if something went wrong */
@@ -1227,6 +1234,7 @@ out:
 	}
 	write_unlock_bh(&neigh->lock);
 
+    /* 告知通知链及netlink用户态程序 */
 	if (notify)
 		neigh_update_notify(neigh);
 
@@ -1282,8 +1290,7 @@ static void neigh_hh_init(struct neighbour *n)
 	write_unlock_bh(&n->lock);
 }
 
-/* Slow and careful. */
-
+/* 邻居子系统ARP发送函数, arp_generic_ops->output(), arpSlow and careful. */
 int neigh_resolve_output(struct neighbour *neigh, struct sk_buff *skb)
 {
 	int rc = 0;
@@ -1342,7 +1349,7 @@ int neigh_connected_output(struct neighbour *neigh, struct sk_buff *skb)
 }
 EXPORT_SYMBOL(neigh_connected_output);
 
-int neigh_direct_output(struct neighbour *neigh, struct sk_buff *skb)
+NUD_REACHABLEint neigh_direct_output(struct neighbour *neigh, struct sk_buff *skb)
 {
 	return dev_queue_xmit(skb);
 }
@@ -1488,6 +1495,7 @@ static void neigh_parms_destroy(struct neigh_parms *parms)
 
 static struct lock_class_key neigh_table_proxy_queue_class;
 
+/* 注册的所有支持的邻居协议 */
 static struct neigh_table *neigh_tables[NEIGH_NR_TABLES] __read_mostly;
 
 void neigh_table_init(int index, struct neigh_table *tbl)

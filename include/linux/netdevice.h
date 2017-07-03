@@ -234,6 +234,7 @@ struct netdev_hw_addr_list {
 #define netdev_for_each_mc_addr(ha, dev) \
 	netdev_hw_addr_list_for_each(ha, &(dev)->mc)
 
+/* 缓存的L2链路层头，加速 */
 struct hh_cache {
 	u16		hh_len;
 	u16		__pad;
@@ -1715,7 +1716,7 @@ struct net_device {
 	const struct ndisc_ops *ndisc_ops;
 #endif
 
-	const struct header_ops *header_ops;
+	const struct header_ops *header_ops;   /* L2层头操控函数: NULL表示此设备不需要L2头 */
 
 	unsigned int		flags;             /* 设备的功能或状态标志, 如 IFF_UP */
 	unsigned int		priv_flags;        /* 用户空间不可见标志，如VLAN、桥等 */
@@ -1769,7 +1770,7 @@ struct net_device {
 	struct tipc_bearer __rcu *tipc_ptr;
 #endif
 	void 			*atalk_ptr;
-	struct in_device __rcu	*ip_ptr;       /* IPv4相关参数 */
+	struct in_device __rcu	*ip_ptr;       /* IPv4相关配置信息 */
 	struct dn_dev __rcu     *dn_ptr;
 	struct inet6_dev __rcu	*ip6_ptr;
 	void			*ax25_ptr;

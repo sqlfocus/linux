@@ -48,9 +48,10 @@
 struct fib_nh;
 struct fib_info;
 struct uncached_list;
-/* 路由表 */
+
+/* 路由缓存，对应于一个IP地址 */
 struct rtable {
-	struct dst_entry	dst;
+	struct dst_entry	dst;          /*  */
 
 	int			rt_genid;
 	unsigned int		rt_flags;
