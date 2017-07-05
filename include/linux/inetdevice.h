@@ -140,7 +140,7 @@ struct in_ifaddr {
 	__be32			ifa_broadcast;
 	unsigned char		ifa_scope;
 	unsigned char		ifa_prefixlen;
-	__u32			ifa_flags;
+	__u32			ifa_flags;           /* IFA_F_SECONDARY: 辅IP */
 	char			ifa_label[IFNAMSIZ];
 
 	/* In seconds, relative to tstamp. Expiry is at tstamp + HZ * lft. */

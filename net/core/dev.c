@@ -8369,6 +8369,8 @@ static int __init net_dev_init(void)
 
     /* 注册到cpu热插拔事件的通知链 */
 	hotcpu_notifier(dev_cpu_callback, 0);
+
+    /* 路由缓存(协议无关部分)初始化 */
 	dst_subsys_init();
 	rc = 0;
 out:

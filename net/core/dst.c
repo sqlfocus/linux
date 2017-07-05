@@ -197,20 +197,24 @@ void dst_init(struct dst_entry *dst, struct dst_ops *ops,
 }
 EXPORT_SYMBOL(dst_init);
 
+/* 分配路由缓存 */
 void *dst_alloc(struct dst_ops *ops, struct net_device *dev,
 		int initial_ref, int initial_obsolete, unsigned short flags)
 {
 	struct dst_entry *dst;
 
+    /* 快速垃圾回收 */
 	if (ops->gc && dst_entries_get_fast(ops) > ops->gc_thresh) {
 		if (ops->gc(ops))
 			return NULL;
 	}
 
+    /* 分配，大小由创建缓存池时决定 */
 	dst = kmem_cache_alloc(ops->kmem_cachep, GFP_ATOMIC);
 	if (!dst)
 		return NULL;
 
+    /* 初始化 */
 	dst_init(dst, ops, dev, initial_ref, initial_obsolete, flags);
 
 	return dst;
@@ -484,7 +488,9 @@ static struct notifier_block dst_dev_notifier = {
 	.priority = -10, /* must be called after other network notifiers */
 };
 
+/* 路由缓存初始化 */
 void __init dst_subsys_init(void)
 {
+    /* 注册通知链, netdev_chain */
 	register_netdevice_notifier(&dst_dev_notifier);
 }

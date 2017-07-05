@@ -30,7 +30,7 @@
 
 struct sk_buff;
 
-/* */
+/* 路由缓存项中，与协议无关的部分 */
 struct dst_entry {
 	struct rcu_head		rcu_head;
 	struct dst_entry	*child;

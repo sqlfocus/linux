@@ -88,6 +88,7 @@
 #+BEGIN_EXAMPLE
 -register_pernet_device(&loopback_net_ops)   注册loopback口
 -open_softirq()                              注册软中断，NET_TX_SOFTIRQ/NET_RX_SOFTIRQ
+-dst_subsys_init()                           路由缓存初始化， ~/net/core/dst.c
 #+END_EXAMPLE
 
 * 全局变量
@@ -566,4 +567,5 @@ ab
  - NAPI         :: new API, 网络层新接口，糅合了poll/中断两种报文接收模式
    : 如果接收到新帧时，内核还没有完成处理前几个帧的工作，驱动程序就没有必
    : 要产生其他中断事件；然后当该队列为空时再重新开启中断功能
+ - FIB          :: Forwarding Information Base, 转发信息库，简称路由表
 

@@ -160,6 +160,7 @@ struct flowidn {
 #define fld_dport		uli.ports.dport
 } __attribute__((__aligned__(BITS_PER_LONG/8)));
 
+/* 类似于ACL，根据从L3/L4中选择的字段，定义流量集 */
 struct flowi {
 	union {
 		struct flowi_common	__fl_common;

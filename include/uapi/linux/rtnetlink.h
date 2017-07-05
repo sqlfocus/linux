@@ -259,14 +259,14 @@ enum {
    Intermediate values are also possible f.e. interior routes
    could be assigned a value between UNIVERSE and LINK.
 */
-
+/* 到达地址的距离 */
 enum rt_scope_t {
-	RT_SCOPE_UNIVERSE=0,
+	RT_SCOPE_UNIVERSE=0,   /* 通往远程非直连目的地 */
 /* User defined values  */
-	RT_SCOPE_SITE=200,
-	RT_SCOPE_LINK=253,
-	RT_SCOPE_HOST=254,
-	RT_SCOPE_NOWHERE=255
+	RT_SCOPE_SITE=200,     /*  */
+	RT_SCOPE_LINK=253,     /* 本地网络地址或子网广播地址 */
+	RT_SCOPE_HOST=254,     /* 本地接口配置IP */
+	RT_SCOPE_NOWHERE=255   /* 非法scope，路由项不通往任何地方 */
 };
 
 /* rtm_flags */
@@ -284,8 +284,8 @@ enum rt_class_t {
 /* User defined values */
 	RT_TABLE_COMPAT=252,
 	RT_TABLE_DEFAULT=253,
-	RT_TABLE_MAIN=254,
-	RT_TABLE_LOCAL=255,
+	RT_TABLE_MAIN=254,       /* main表 */
+	RT_TABLE_LOCAL=255,      /* local表 */
 	RT_TABLE_MAX=0xFFFFFFFF
 };
 
