@@ -53,6 +53,7 @@ irq_cpustat_t irq_stat[NR_CPUS] ____cacheline_aligned;
 EXPORT_SYMBOL(irq_stat);
 #endif
 
+/* 软中断向量表，由 open_softirq() 注册 */
 static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
 
 DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
@@ -242,7 +243,7 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
 	unsigned long old_flags = current->flags;
-	int max_restart = MAX_SOFTIRQ_RESTART;
+	int max_restart = MAX_SOFTIRQ_RESTART;      /* 设定单个软中断最大循环处理次数 */
 	struct softirq_action *h;
 	bool in_hardirq;
 	__u32 pending;
@@ -263,12 +264,11 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 
 restart:
 	/* Reset the pending bitmask before enabling irqs */
-	set_softirq_pending(0);
+	set_softirq_pending(0);       /* 处理前，清空位 */
 
-	local_irq_enable();
+	local_irq_enable();           /* 执行时，开启了软中断 */
 
 	h = softirq_vec;
-
 	while ((softirq_bit = ffs(pending))) {
 		unsigned int vec_nr;
 		int prev_count;
@@ -281,7 +281,7 @@ restart:
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
 		trace_softirq_entry(vec_nr);
-		h->action(h);
+		h->action(h);             /* 执行 */
 		trace_softirq_exit(vec_nr);
 		if (unlikely(prev_count != preempt_count())) {
 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",
@@ -294,7 +294,7 @@ restart:
 	}
 
 	rcu_bh_qs();
-	local_irq_disable();
+	local_irq_disable();          /* 重新关中断 */
 
 	pending = local_softirq_pending();
 	if (pending) {
@@ -317,7 +317,7 @@ asmlinkage __visible void do_softirq(void)
 	__u32 pending;
 	unsigned long flags;
 
-	if (in_interrupt())
+	if (in_interrupt())     /* 正处于硬件中断或软件中断处理中 */
 		return;
 
 	local_irq_save(flags);
@@ -424,11 +424,12 @@ inline void raise_softirq_irqoff(unsigned int nr)
 	 *
 	 * Otherwise we wake up ksoftirqd to make sure we
 	 * schedule the softirq soon.
-	 */
+	 *//* 启动ksoftirqd内核线程 */
 	if (!in_interrupt())
 		wakeup_softirqd();
 }
 
+/* 触发软中断 */
 void raise_softirq(unsigned int nr)
 {
 	unsigned long flags;
@@ -444,6 +445,7 @@ void __raise_softirq_irqoff(unsigned int nr)
 	or_softirq_pending(1UL << nr);
 }
 
+/* 注册软中断 */
 void open_softirq(int nr, void (*action)(struct softirq_action *))
 {
 	softirq_vec[nr].action = action;
@@ -457,6 +459,7 @@ struct tasklet_head {
 	struct tasklet_struct **tail;
 };
 
+/* 微任务队列，分别对应优先级 HI_SOFTIRQ/TASKLET_SOFTIRQ */
 static DEFINE_PER_CPU(struct tasklet_head, tasklet_vec);
 static DEFINE_PER_CPU(struct tasklet_head, tasklet_hi_vec);
 
@@ -496,6 +499,7 @@ void __tasklet_hi_schedule_first(struct tasklet_struct *t)
 }
 EXPORT_SYMBOL(__tasklet_hi_schedule_first);
 
+/* TASKLET_SOFTIRQ软中断处理函数 */
 static __latent_entropy void tasklet_action(struct softirq_action *a)
 {
 	struct tasklet_struct *list;
@@ -504,19 +508,19 @@ static __latent_entropy void tasklet_action(struct softirq_action *a)
 	list = __this_cpu_read(tasklet_vec.head);
 	__this_cpu_write(tasklet_vec.head, NULL);
 	__this_cpu_write(tasklet_vec.tail, this_cpu_ptr(&tasklet_vec.head));
-	local_irq_enable();
+	local_irq_enable();                 /* 清空任务链表 */
 
 	while (list) {
 		struct tasklet_struct *t = list;
 
 		list = list->next;
 
-		if (tasklet_trylock(t)) {
+		if (tasklet_trylock(t)) {       /* 此处的逻辑保证仅有一个CPU执行它们 */
 			if (!atomic_read(&t->count)) {
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED,
 							&t->state))
 					BUG();
-				t->func(t->data);
+				t->func(t->data);       /* 执行任务 */
 				tasklet_unlock(t);
 				continue;
 			}
@@ -528,10 +532,11 @@ static __latent_entropy void tasklet_action(struct softirq_action *a)
 		*__this_cpu_read(tasklet_vec.tail) = t;
 		__this_cpu_write(tasklet_vec.tail, &(t->next));
 		__raise_softirq_irqoff(TASKLET_SOFTIRQ);
-		local_irq_enable();
+		local_irq_enable();             /* 未处理的任务重新挂接回链表，待触发新软中断继续处理 */
 	}
 }
 
+/* HI_SOFTIRQ软中断处理函数 */
 static __latent_entropy void tasklet_hi_action(struct softirq_action *a)
 {
 	struct tasklet_struct *list;
@@ -645,6 +650,7 @@ void tasklet_hrtimer_init(struct tasklet_hrtimer *ttimer,
 }
 EXPORT_SYMBOL_GPL(tasklet_hrtimer_init);
 
+/* 注册 HI_SOFTIRQ/TASKLET_SOFTIRQ 类型的软中断，包括其处理函数 */
 void __init softirq_init(void)
 {
 	int cpu;
@@ -665,6 +671,9 @@ static int ksoftirqd_should_run(unsigned int cpu)
 	return local_softirq_pending();
 }
 
+/* ksoftirqd内核线程，检查被其他执行点遗漏的软IRQ；在必须把CPU交还给其他
+   活动前，尽可能多地执行几个这些被执行的软IRQ；每个CPU有一个线程，命名
+   为ksoftirqd/%u */
 static void run_ksoftirqd(unsigned int cpu)
 {
 	local_irq_disable();
@@ -743,6 +752,7 @@ static int takeover_tasklets(unsigned int cpu)
 #define takeover_tasklets	NULL
 #endif /* CONFIG_HOTPLUG_CPU */
 
+/* ksoftirqd内核线程描述结构 */
 static struct smp_hotplug_thread softirq_threads = {
 	.store			= &ksoftirqd,
 	.thread_should_run	= ksoftirqd_should_run,
@@ -750,6 +760,7 @@ static struct smp_hotplug_thread softirq_threads = {
 	.thread_comm		= "ksoftirqd/%u",
 };
 
+/* 在内核引导初期启动此线程 */
 static __init int spawn_ksoftirqd(void)
 {
 	cpuhp_setup_state_nocalls(CPUHP_SOFTIRQ_DEAD, "softirq:dead", NULL,

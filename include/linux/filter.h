@@ -386,7 +386,7 @@ struct bpf_binary_header {
 struct bpf_prog {
 	u16			pages;		/* Number of allocated pages */
 	kmemcheck_bitfield_begin(meta);
-	u16			jited:1,	/* Is our filter JIT'ed? */
+	u16			jited:1,	/* 是否已经jit？？？Is our filter JIT'ed? */
 				gpl_compatible:1, /* Is filter GPL compatible? */
 				cb_access:1,	/* Is control block accessed? */
 				dst_needed:1;	/* Do we need dst entry? */
@@ -397,6 +397,8 @@ struct bpf_prog {
 	struct sock_fprog_kern	*orig_prog;	/* Original BPF program */
 	unsigned int		(*bpf_func)(const struct sk_buff *skb,
 					    const struct bpf_insn *filter);
+                            /* ebpf程序的解释执行函数，默认 __bpf_prog_run()；
+                               JIT后则为jit的指令代码 */
 	/* ebpf指令，Instructions for interpreter */
 	union {
 		struct sock_filter	insns[0];

@@ -155,6 +155,7 @@ static struct neighbour *ipv4_neigh_lookup(const struct dst_entry *dst,
 					   struct sk_buff *skb,
 					   const void *daddr);
 
+/* IPv4路由缓存池操控虚拟表 */
 static struct dst_ops ipv4_dst_ops = {
 	.family =		AF_INET,
 	.check =		ipv4_dst_check,
@@ -192,6 +193,7 @@ const __u8 ip_tos2prio[16] = {
 };
 EXPORT_SYMBOL(ip_tos2prio);
 
+/* 存储路由查找的统计信息 */
 static DEFINE_PER_CPU(struct rt_cache_stat, rt_cache_stat);
 #define RT_CACHE_STAT_INC(field) raw_cpu_inc(rt_cache_stat.field)
 
@@ -1347,6 +1349,7 @@ struct uncached_list {
 	struct list_head	head;
 };
 
+/* */
 static DEFINE_PER_CPU_ALIGNED(struct uncached_list, rt_uncached_list);
 
 static void rt_add_uncached_list(struct rtable *rt)
@@ -1452,11 +1455,12 @@ struct rtable *rt_dst_alloc(struct net_device *dev,
 {
 	struct rtable *rt;
 
+    /* 分配路由缓存项 */
 	rt = dst_alloc(&ipv4_dst_ops, dev, 1, DST_OBSOLETE_FORCE_CHK,
 		       (will_cache ? 0 : (DST_HOST | DST_NOCACHE)) |
 		       (nopolicy ? DST_NOPOLICY : 0) |
 		       (noxfrm ? DST_NOXFRM : 0));
-
+    /* 进一步初始化 */
 	if (rt) {
 		rt->rt_genid = rt_genid_ipv4(dev_net(dev));
 		rt->rt_flags = flags;
@@ -1469,9 +1473,9 @@ struct rtable *rt_dst_alloc(struct net_device *dev,
 		rt->rt_table_id = 0;
 		INIT_LIST_HEAD(&rt->rt_uncached);
 
-		rt->dst.output = ip_output;
+		rt->dst.output = ip_output;              /* 设置L3转发函数 */
 		if (flags & RTCF_LOCAL)
-			rt->dst.input = ip_local_deliver;
+			rt->dst.input = ip_local_deliver;    /* 设置上传本地函数 */
 	}
 
 	return rt;
@@ -1682,7 +1686,7 @@ rt_cache:
 		rth->rt_table_id = res->table->tb_id;
 	RT_CACHE_STAT_INC(in_slow_tot);
 
-	rth->dst.input = ip_forward;
+	rth->dst.input = ip_forward;        /* 设置转发函数 */
 
 	rt_set_nexthop(rth, daddr, res, fnhe, res->fi, res->type, itag);
 	if (lwtunnel_output_redirect(rth->dst.lwtstate)) {
@@ -2860,10 +2864,11 @@ static __net_initdata struct pernet_operations ipv4_inetpeer_ops = {
 	.exit	=	ipv4_inetpeer_exit,
 };
 
-#ifdef CONFIG_IP_ROUTE_CLASSID
+#ifdef CONFIG_IP_ROUTE_CLASSID  /* 被基于路由表的分类器使用，用于跟踪与一个标签关联的路由上的流量的统计信息 */
 struct ip_rt_acct __percpu *ip_rt_acct __read_mostly;
 #endif /* CONFIG_IP_ROUTE_CLASSID */
 
+/* 路由子系统初始化 */
 int __init ip_rt_init(void)
 {
 	int rc = 0;
@@ -2891,7 +2896,7 @@ int __init ip_rt_init(void)
 		panic("IP: failed to allocate ip_rt_acct\n");
 #endif
 
-	ipv4_dst_ops.kmem_cachep =
+	ipv4_dst_ops.kmem_cachep =  /* 创建路由缓存池 */
 		kmem_cache_create("ip_dst_cache", sizeof(struct rtable), 0,
 				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 
@@ -2906,13 +2911,13 @@ int __init ip_rt_init(void)
 	ipv4_dst_ops.gc_thresh = ~0;
 	ip_rt_max_size = INT_MAX;
 
-	devinet_init();
-	ip_fib_init();
+	devinet_init();    /* 设备相关初始化，注册通知链及netlink处理接口 */
+	ip_fib_init();     /* FIB相关初始化，注册通知链及netlink处理接口 */
 
 	if (ip_rt_proc_init())
 		pr_err("Unable to create route proc files\n");
 #ifdef CONFIG_XFRM
-	xfrm_init();
+	xfrm_init();       /* 支持IPSec */
 	xfrm4_init();
 #endif
 	rtnl_register(PF_INET, RTM_GETROUTE, inet_rtm_getroute, NULL, NULL);

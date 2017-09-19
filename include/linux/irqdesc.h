@@ -56,7 +56,7 @@ struct irq_desc {
 #ifdef CONFIG_IRQ_PREFLOW_FASTEOI
 	irq_preflow_handler_t	preflow_handler;
 #endif
-	struct irqaction	*action;	/* IRQ action list */
+	struct irqaction	*action;	/* 驱动程序注册的中断处理函数，IRQ action list */
 	unsigned int		status_use_accessors;
 	unsigned int		core_internal_state__do_not_mess_with_it;
 	unsigned int		depth;		/* nested irq disables */

@@ -65,6 +65,7 @@ enum {
 	NEIGH_VAR_MAX
 };
 
+/* 调整邻居协议的参数 */
 struct neigh_parms {
 	possible_net_t net;
 	struct net_device *dev;
@@ -130,41 +131,49 @@ struct neigh_statistics {
 
 #define NEIGH_CACHE_STAT_INC(tbl, field) this_cpu_inc((tbl)->stats->field)
 
+/* 存储邻居的有关信息 */
 struct neighbour {
 	struct neighbour __rcu	*next;
-	struct neigh_table	*tbl;
-	struct neigh_parms	*parms;
-	unsigned long		confirmed;
-	unsigned long		updated;
+	struct neigh_table	*tbl;       /* 对应的邻居协议实例 */
+	struct neigh_parms	*parms;     /* 调整参数 */
+	unsigned long		confirmed;  /* 变更为可达的时间戳 */
+	unsigned long		updated;    /* 状态更新时间戳，jiffies */
 	rwlock_t		lock;
 	atomic_t		refcnt;
-	struct sk_buff_head	arp_queue;
+	struct sk_buff_head	arp_queue;  /* 缓存的待发送的数据报文 */
 	unsigned int		arp_queue_len_bytes;
-	struct timer_list	timer;
+	struct timer_list	timer;      /* 状态转移定时器 */
 	unsigned long		used;
-	atomic_t		probes;
-	__u8			flags;
-	__u8			nud_state;
-	__u8			type;
-	__u8			dead;
+	atomic_t		probes;         /* 失败的solicitation尝试次数 */
+	__u8			flags;          /* */
+	__u8			nud_state;      /* 当前状态 */
+	__u8			type;           /* 地址类型，如ARP包括 RTN_BROADCAST/RTN_UNICAST/... */
+	__u8			dead;           /* 1表示该结构将被删除，不能再使用了 */
 	seqlock_t		ha_lock;
 	unsigned char		ha[ALIGN(MAX_ADDR_LEN, sizeof(unsigned long))];
-	struct hh_cache		hh;
+                                    /* 关联的L2地址 */
+	struct hh_cache		hh;         /* 缓存的链路层头，加速 */
 	int			(*output)(struct neighbour *, struct sk_buff *);
-	const struct neigh_ops	*ops;
+                                    /* 保持协议无关性，实际L3层调用此函数；根
+                                       据邻居的具体状态->nud_state，由struct neigh_ops具
+                                       体项初始化 */
+	const struct neigh_ops	*ops;   /* 和L3协议之间的接口 */
 	struct rcu_head		rcu;
-	struct net_device	*dev;
-	u8			primary_key[0];
+	struct net_device	*dev;       /* 对应的网络设备 */
+	u8			primary_key[0];     /* L3地址，查找struct neigh_table->nht表的键 */
 };
 
+/* VFT, virtural function table，L3协议和邻居协议之间的接口；
+   如 arp_generic_ops/arp_hh_ops/arp_direct_ops */
 struct neigh_ops {
-	int			family;
-	void			(*solicit)(struct neighbour *, struct sk_buff *);
-	void			(*error_report)(struct neighbour *, struct sk_buff *);
-	int			(*output)(struct neighbour *, struct sk_buff *);
-	int			(*connected_output)(struct neighbour *, struct sk_buff *);
+	int			family;             /* 关联的协议 */
+	void			(*solicit)(struct neighbour *, struct sk_buff *);       /* 发送ARP请求 */
+	void			(*error_report)(struct neighbour *, struct sk_buff *);  /* 通知网络层有错误发生 */
+	int			(*output)(struct neighbour *, struct sk_buff *);            /* 退出NUD_REACHABLE后，对应的输出函数 */
+	int			(*connected_output)(struct neighbour *, struct sk_buff *);  /* NUD_REACHABLE对应的输出函数 */
 };
 
+/* 基于目的地址的代理 */
 struct pneigh_entry {
 	struct pneigh_entry	*next;
 	possible_net_t		net;
@@ -186,7 +195,7 @@ struct neigh_hash_table {
 	struct rcu_head		rcu;
 };
 
-
+/* 描述某种邻居协议的参数及所用函数，所有的实例注册到 neigh_tables[], 如 arp_tbl  */
 struct neigh_table {
 	int			family;
 	int			entry_size;
@@ -196,31 +205,31 @@ struct neigh_table {
 					const struct net_device *dev,
 					__u32 *hash_rnd);
 	bool			(*key_eq)(const struct neighbour *, const void *pkey);
-	int			(*constructor)(struct neighbour *);
-	int			(*pconstructor)(struct pneigh_entry *);
+	int			(*constructor)(struct neighbour *);        /* 构建对应的struct neighbour结构 */
+	int			(*pconstructor)(struct pneigh_entry *);    /*  */
 	void			(*pdestructor)(struct pneigh_entry *);
 	void			(*proxy_redo)(struct sk_buff *skb);
-	char			*id;
-	struct neigh_parms	parms;
+	char			*id;                       /* 用于标识协议的字符串 */
+	struct neigh_parms	parms;                 /* 控制参数 */
 	struct list_head	parms_list;
 	int			gc_interval;
 	int			gc_thresh1;
 	int			gc_thresh2;
 	int			gc_thresh3;
 	unsigned long		last_flush;
-	struct delayed_work	gc_work;
-	struct timer_list 	proxy_timer;
+	struct delayed_work	gc_work;               /* 回收定时任务 */
+	struct timer_list 	proxy_timer;           /* 代理定时器：推迟请求的处理 */
 	struct sk_buff_head	proxy_queue;
 	atomic_t		entries;
 	rwlock_t		lock;
 	unsigned long		last_rand;
-	struct neigh_statistics	__percpu *stats;
-	struct neigh_hash_table __rcu *nht;
-	struct pneigh_entry	**phash_buckets;
+	struct neigh_statistics	__percpu *stats;   /* 统计信息 */
+	struct neigh_hash_table __rcu *nht;        /* 缓存L3-L2地址转换 */
+	struct pneigh_entry	**phash_buckets;       /* 被代理的IP地址 */
 };
 
 enum {
-	NEIGH_ARP_TABLE = 0,
+	NEIGH_ARP_TABLE = 0,       /* IPv4对应的arp邻居子系统协议 */
 	NEIGH_ND_TABLE = 1,
 	NEIGH_DN_TABLE = 2,
 	NEIGH_NR_TABLES,
@@ -280,6 +289,7 @@ static inline struct neighbour *___neigh_lookup_noref(
 	struct neighbour *n;
 	u32 hash_val;
 
+    /* 计算hash，在对应的桶上遍历并比较key */
 	hash_val = hash(pkey, dev, nht->hash_rnd) >> (32 - nht->hash_shift);
 	for (n = rcu_dereference_bh(nht->hash_buckets[hash_val]);
 	     n != NULL;

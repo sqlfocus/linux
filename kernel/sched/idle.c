@@ -299,5 +299,5 @@ void cpu_startup_entry(enum cpuhp_state state)
 #endif
 	arch_cpu_idle_prepare();
 	cpuhp_online_idle(state);
-	cpu_idle_loop();
+	cpu_idle_loop();             /* 传说中的idle进程 */
 }

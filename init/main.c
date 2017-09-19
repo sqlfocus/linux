@@ -390,7 +390,7 @@ static noinline void __ref rest_init(void)
 	 * the init task will end up wanting to create kthreads, which, if
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
-	kernel_thread(kernel_init, NULL, CLONE_FS);
+	kernel_thread(kernel_init, NULL, CLONE_FS);   /* 启动init进程，进程鼻祖 */
 	numa_default_policy();
 	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
@@ -405,7 +405,7 @@ static noinline void __ref rest_init(void)
 	init_idle_bootup_task(current);
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */
-	cpu_startup_entry(CPUHP_ONLINE);
+	cpu_startup_entry(CPUHP_ONLINE);              /* 启动idle进程 */
 }
 
 /* Check for early params. */
@@ -515,14 +515,14 @@ asmlinkage __visible void __init start_kernel(void)
 	page_alloc_init();
 
 	pr_notice("Kernel command line: %s\n", boot_command_line);
-	parse_early_param();
+	parse_early_param();               /* 参数解析第1阶段 */
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,
 				  __stop___param - __start___param,
 				  -1, -1, NULL, &unknown_bootoption);
 	if (!IS_ERR_OR_NULL(after_dashes))
 		parse_args("Setting init args", after_dashes, NULL, 0, -1, -1,
-			   NULL, set_init_arg);
+			   NULL, set_init_arg);    /* 参数解析第2阶段 */
 
 	jump_label_init();
 
@@ -561,12 +561,12 @@ asmlinkage __visible void __init start_kernel(void)
 	radix_tree_init();
 	/* init some links before init_ISA_irqs() */
 	early_irq_init();
-	init_IRQ();
+	init_IRQ();                        /* 中断初始化 */
 	tick_init();
 	rcu_init_nohz();
 	init_timers();
 	hrtimers_init();
-	softirq_init();
+	softirq_init();                    /* 软中断(HI_SOFTIRQ/TASKLET_SOFTIRQ)初始化 */
 	timekeeping_init();
 	time_init();
 	sched_clock_postinit();
@@ -660,7 +660,7 @@ asmlinkage __visible void __init start_kernel(void)
 	ftrace_init();
 
 	/* Do the rest non-__init'ed, we're now alive */
-	rest_init();
+	rest_init();                       /* 剩余工作，包括启动init进程等 */
 }
 
 /* Call all constructor functions linked into the kernel. */
@@ -868,8 +868,8 @@ static void __init do_basic_setup(void)
 	init_irq_proc();
 	do_ctors();
 	usermodehelper_enable();
-	do_initcalls();             /* 调用注册的初始化函数，__initcall_start ~
-                                   __initcall_end之间为注册的初始化函数指针 */
+	do_initcalls();               /* 各模块儿注册的初始化代码，如 module_init/early_initcall/core_initcall()
+                                     __initcall_start ~ __initcall_end之间为注册的初始化函数指针 */
 	random_int_secret_init();
 }
 
@@ -895,7 +895,7 @@ void __init load_default_modules(void)
 static int run_init_process(const char *init_filename)
 {
 	argv_init[0] = init_filename;
-	return do_execve(getname_kernel(init_filename),
+	return do_execve(getname_kernel(init_filename),     /* 引入init进程 */
 		(const char __user *const __user *)argv_init,
 		(const char __user *const __user *)envp_init);
 }
@@ -938,11 +938,12 @@ static inline void mark_readonly(void)
 }
 #endif
 
+/* 内核init线程 */
 static int __ref kernel_init(void *unused)
 {
 	int ret;
 
-	kernel_init_freeable();
+	kernel_init_freeable();               /* 初始化 */
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
 	free_initmem();
@@ -968,7 +969,7 @@ static int __ref kernel_init(void *unused)
 	 * The Bourne shell can be used instead of init if we are
 	 * trying to recover a really broken machine.
 	 */
-	if (execute_command) {
+	if (execute_command) {                /* 执行/sbin/init */
 		ret = run_init_process(execute_command);
 		if (!ret)
 			return 0;
@@ -990,7 +991,7 @@ static noinline void __init kernel_init_freeable(void)
 	/*
 	 * Wait until kthreadd is all set-up.
 	 */
-	wait_for_completion(&kthreadd_done);
+	wait_for_completion(&kthreadd_done);          /* 等待kthreadd启动完毕 */
 
 	/* Now the scheduler is fully set up and can do blocking allocations */
 	gfp_allowed_mask = __GFP_BITS_MASK;
@@ -1008,15 +1009,15 @@ static noinline void __init kernel_init_freeable(void)
 
 	smp_prepare_cpus(setup_max_cpus);
 
-	do_pre_smp_initcalls();
+	do_pre_smp_initcalls();                       /* 早期初始化 */
 	lockup_detector_init();
 
-	smp_init();
+	smp_init();                                   /* SMP初始化 */
 	sched_init_smp();
 
 	page_alloc_init_late();
 
-	do_basic_setup();
+	do_basic_setup();                             /* 大部份的初始化 */
 
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)

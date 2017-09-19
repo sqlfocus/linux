@@ -8,6 +8,7 @@
 #include <net/flow.h>
 #include <net/rtnetlink.h>
 
+/* 由策略路由在路由流量时选择路由表的规则 */
 struct fib_rule {
 	struct list_head	list;
 	int			iifindex;

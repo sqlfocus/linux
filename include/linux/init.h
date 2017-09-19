@@ -224,7 +224,7 @@ struct obs_kernel_param {
 		__used __section(.init.setup)				\
 		__attribute__((aligned((sizeof(long)))))		\
 		= { __setup_str_##unique_id, fn, early }
-
+/* 注册关键字及其处理函数 */
 #define __setup(str, fn)						\
 	__setup_param(str, fn, fn, 0)
 

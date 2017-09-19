@@ -1,5 +1,5 @@
 #undef TRACE_SYSTEM
-#define TRACE_SYSTEM sock
+#define TRACE_SYSTEM sock                /* 定义group */
 
 #if !defined(_TRACE_SOCK_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_SOCK_H

@@ -1,0 +1,39 @@
+#+TITLE: 用户态与内核态通信方式
+#+AUTHOR: sqlfocus
+
+
+本文档简述用户态和内核态的通信方式，以加深程序执行权限、硬件CPU分级(ring)
+等概念；从而为加深内核功能划分、内核源码理解打下基础！
+
+
+* 通信方式
+ - 系统调用
+ - procfs           :: /proc文件系统
+ - sysctl           :: /proc/sys目录，可以通过sysctl系统调用访问, man sysctl
+ - sysfs            :: /sys文件系统
+ - ioctl系统调用
+ - netlink套接字
+
+* procfs
+主要用于输出内核只读信息，如缓存、统计数据等，~/include/linux/proc_fs.h
+ - /proc/net        :: 网络代码
+
+* sysctl
+主要用于配置内核参数，/proc/sys下的文件名一般和对应的内核参数同名；只有
+超级用户可修改；~/include/linux/sysctl.h
+ - /proc/sys/net    :: 网络相关配置
+
+* 参考
+ - netlink.org
+
+
+
+
+
+
+
+
+
+
+
+

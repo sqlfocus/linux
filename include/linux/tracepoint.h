@@ -85,7 +85,7 @@ extern void syscall_regfunc(void);
 extern void syscall_unregfunc(void);
 #endif /* CONFIG_HAVE_SYSCALL_TRACEPOINTS */
 
-#define PARAMS(args...) args
+#define PARAMS(args...) args              /* gcc拓展属性，变长参数 */
 
 #define TRACE_DEFINE_ENUM(x)
 
@@ -128,6 +128,7 @@ extern void syscall_unregfunc(void);
  * as "(void *, void)". The DECLARE_TRACE_NOARGS() will pass in just
  * "void *data", where as the DECLARE_TRACE() will pass in "void *data, proto".
  */
+/* 执行注册的tracepoint函数 */
 #define __DO_TRACE(tp, proto, args, cond, prercu, postrcu)		\
 	do {								\
 		struct tracepoint_func *it_func_ptr;			\
@@ -143,7 +144,7 @@ extern void syscall_unregfunc(void);
 			do {						\
 				it_func = (it_func_ptr)->func;		\
 				__data = (it_func_ptr)->data;		\
-				((void(*)(proto))(it_func))(args);	\
+				((void(*)(proto))(it_func))(args);	/* 执行探针函数 */  \
 			} while ((++it_func_ptr)->func);		\
 		}							\
 		rcu_read_unlock_sched_notrace();			\
@@ -177,17 +178,17 @@ extern void syscall_unregfunc(void);
  * instrumentation. This lets us find RCU issues triggered with tracepoints
  * even when this tracepoint is off. This code has no purpose other than
  * poking RCU a bit.
- */
+ *//* TRACE_EVENT()动态生成的tracepoint代码 */
 #define __DECLARE_TRACE(name, proto, args, cond, data_proto, data_args) \
-	extern struct tracepoint __tracepoint_##name;			\
-	static inline void trace_##name(proto)				\
+	extern struct tracepoint __tracepoint_##name;	/* 声明tracepoint点 */\
+	static inline void trace_##name(proto)			/* 定义tracepoint点插入点函数 */\
 	{								\
-		if (static_key_false(&__tracepoint_##name.key))		\
-			__DO_TRACE(&__tracepoint_##name,		\
+		if (static_key_false(&__tracepoint_##name.key))	/* 条件判断，利用jump label实现 */\
+			__DO_TRACE(&__tracepoint_##name,        /* 执行注册的探针函数 */\
 				TP_PROTO(data_proto),			\
 				TP_ARGS(data_args),			\
 				TP_CONDITION(cond),,);			\
-		if (IS_ENABLED(CONFIG_LOCKDEP) && (cond)) {		\
+		if (IS_ENABLED(CONFIG_LOCKDEP) && (cond)) { /* 开启大内核锁时，执行注册函数 */\
 			rcu_read_lock_sched_notrace();			\
 			rcu_dereference_sched(__tracepoint_##name.funcs);\
 			rcu_read_unlock_sched_notrace();		\
@@ -197,20 +198,20 @@ extern void syscall_unregfunc(void);
 		PARAMS(cond), PARAMS(data_proto), PARAMS(data_args))	\
 	static inline int						\
 	register_trace_##name(void (*probe)(data_proto), void *data)	\
-	{								\
+	{   /* 注册tracepoint点探针函数 */\
 		return tracepoint_probe_register(&__tracepoint_##name,	\
 						(void *)probe, data);	\
 	}								\
 	static inline int						\
 	register_trace_prio_##name(void (*probe)(data_proto), void *data,\
 				   int prio)				\
-	{								\
+	{   /* 注册tracepoint点带优先级的探针函数 */\
 		return tracepoint_probe_register_prio(&__tracepoint_##name, \
 					      (void *)probe, data, prio); \
 	}								\
 	static inline int						\
 	unregister_trace_##name(void (*probe)(data_proto), void *data)	\
-	{								\
+	{   /* 卸载探针函数 */\
 		return tracepoint_probe_unregister(&__tracepoint_##name,\
 						(void *)probe, data);	\
 	}								\
@@ -220,7 +221,7 @@ extern void syscall_unregfunc(void);
 	}								\
 	static inline bool						\
 	trace_##name##_enabled(void)					\
-	{								\
+	{   /* 检测tracepoint点是否使能*/\
 		return static_key_false(&__tracepoint_##name.key);	\
 	}
 
@@ -230,13 +231,13 @@ extern void syscall_unregfunc(void);
  * on the tracepoints.
  */
 #define DEFINE_TRACE_FN(name, reg, unreg)				 \
-	static const char __tpstrtab_##name[]				 \
+	static const char __tpstrtab_##name[]            /* 定义tracepoint点名字 */\
 	__attribute__((section("__tracepoints_strings"))) = #name;	 \
-	struct tracepoint __tracepoint_##name				 \
+	struct tracepoint __tracepoint_##name	         /* 定义tracepoint点 */\
 	__attribute__((section("__tracepoints"))) =			 \
 		{ __tpstrtab_##name, STATIC_KEY_INIT_FALSE, reg, unreg, NULL };\
 	static struct tracepoint * const __tracepoint_ptr_##name __used	 \
-	__attribute__((section("__tracepoints_ptrs"))) =		 \
+	__attribute__((section("__tracepoints_ptrs"))) = /* 定义tracepoint点指针 */\
 		&__tracepoint_##name;
 
 #define DEFINE_TRACE(name)						\

@@ -150,6 +150,7 @@
 /* This should be increased if a protocol with a bigger head is added. */
 #define GRO_MAX_HEAD (MAX_HEADER + 128)
 
+/* 内核注册的L3报文类型，包括协议值及处理函数等，struct packet_type ；由函数 dev_add_pack() 注册 */
 static DEFINE_SPINLOCK(ptype_lock);
 static DEFINE_SPINLOCK(offload_lock);
 struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
@@ -259,14 +260,14 @@ static void unlist_netdevice(struct net_device *dev)
 /*
  *	Our notifier list
  */
-
+/* 网络设备状态的通知链 */
 static RAW_NOTIFIER_HEAD(netdev_chain);
 
 /*
  *	Device drivers call our routines to queue packets here. We empty the
  *	queue in the local softnet handler.
  */
-
+/* 缓存网络数据包，待软中断处理 */
 DEFINE_PER_CPU_ALIGNED(struct softnet_data, softnet_data);
 EXPORT_PER_CPU_SYMBOL(softnet_data);
 
@@ -544,7 +545,7 @@ EXPORT_SYMBOL(dev_remove_offload);
 
 *******************************************************************************/
 
-/* Boot time configuration table */
+/* 内核引导期间的网络接口配置信息，Boot time configuration table */
 static struct netdev_boot_setup dev_boot_setup[NETDEV_BOOT_SETUP_MAX];
 
 /**
@@ -582,7 +583,7 @@ static int netdev_boot_setup_add(char *name, struct ifmap *map)
  *	The found settings are set for the device to be used
  *	later in the device probing.
  *	Returns 0 if no settings found, 1 if they are.
- */
+ *//* 内核引导期间，利用参数设置信息初始化相应的设备 */
 int netdev_boot_setup_check(struct net_device *dev)
 {
 	struct netdev_boot_setup *s = dev_boot_setup;
@@ -636,7 +637,7 @@ unsigned long netdev_boot_base(const char *prefix, int unit)
 
 /*
  * Saves at boot time configured settings for any netdevice.
- */
+ *//* 保存引导期间传入的网络设备的参数 */
 int __init netdev_boot_setup(char *str)
 {
 	int ints[5];
@@ -661,6 +662,7 @@ int __init netdev_boot_setup(char *str)
 	return netdev_boot_setup_add(str, &map);
 }
 
+/* 注册内核引导关键字"netdev="(内核启动参数)的处理函数 */
 __setup("netdev=", netdev_boot_setup);
 
 /*******************************************************************************
@@ -1086,7 +1088,7 @@ static int __dev_alloc_name(struct net *net, const char *name, char *buf)
  *	Limited to bits_per_byte * page size devices (ie 32K on most platforms).
  *	Returns the number of the unit assigned or a negative errno code.
  */
-
+/* 为设备确定名字：一般设备名初始化为eth%d，此函数将%d转换为该设备类型中未分配的数字 */
 int dev_alloc_name(struct net_device *dev, const char *name)
 {
 	char buf[IFNAMSIZ];
@@ -1373,6 +1375,7 @@ int dev_open(struct net_device *dev)
 	if (ret < 0)
 		return ret;
 
+    /* 告知netlink多播组，及 netdev_chain 通知链 */
 	rtmsg_ifinfo(RTM_NEWLINK, dev, IFF_UP|IFF_RUNNING, GFP_KERNEL);
 	call_netdevice_notifiers(NETDEV_UP, dev);
 
@@ -2932,7 +2935,7 @@ struct sk_buff *dev_hard_start_xmit(struct sk_buff *first, struct net_device *de
 		struct sk_buff *next = skb->next;
 
 		skb->next = NULL;
-		rc = xmit_one(skb, dev, txq, next != NULL);
+		rc = xmit_one(skb, dev, txq, next != NULL);   /* 传输 */
 		if (unlikely(!dev_xmit_complete(rc))) {
 			skb->next = next;
 			goto out;
@@ -3452,8 +3455,8 @@ int weight_p __read_mostly = 64;            /* old backlog weight */
 static inline void ____napi_schedule(struct softnet_data *sd,
 				     struct napi_struct *napi)
 {
-	list_add_tail(&napi->poll_list, &sd->poll_list);
-	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+	list_add_tail(&napi->poll_list, &sd->poll_list);  /* 挂接设备链表到头部 */
+	__raise_softirq_irqoff(NET_RX_SOFTIRQ);           /* 触发软中断 */
 }
 
 #ifdef CONFIG_RPS
@@ -3846,11 +3849,12 @@ int netif_rx_ni(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(netif_rx_ni);
 
+/* 发送报文软中断， NET_TX_SOFTIRQ */
 static __latent_entropy void net_tx_action(struct softirq_action *h)
 {
 	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
 
-	if (sd->completion_queue) {
+	if (sd->completion_queue) {      /* 释放已发送的报文缓存 */
 		struct sk_buff *clist;
 
 		local_irq_disable();
@@ -3877,7 +3881,7 @@ static __latent_entropy void net_tx_action(struct softirq_action *h)
 		__kfree_skb_flush();
 	}
 
-	if (sd->output_queue) {
+	if (sd->output_queue) {          /* 发送待传输的报文 */
 		struct Qdisc *head;
 
 		local_irq_disable();
@@ -4095,13 +4099,13 @@ static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc)
 	pt_prev = NULL;
 
 another_round:
-	skb->skb_iif = skb->dev->ifindex;
+	skb->skb_iif = skb->dev->ifindex;          /* 赋值收接口索引 */
 
 	__this_cpu_inc(softnet_data.processed);
 
 	if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
 	    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
-		skb = skb_vlan_untag(skb);
+		skb = skb_vlan_untag(skb);             /* 去掉vlan头 */
 		if (unlikely(!skb))
 			goto out;
 	}
@@ -4117,7 +4121,7 @@ another_round:
 		goto skip_taps;
 
 	list_for_each_entry_rcu(ptype, &ptype_all, list) {
-		if (pt_prev)
+		if (pt_prev)                           /* 最外层，糢糊分发 */
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 		pt_prev = ptype;
 	}
@@ -4130,7 +4134,7 @@ another_round:
 
 skip_taps:
 #ifdef CONFIG_NET_INGRESS
-	if (static_key_false(&ingress_needed)) {
+	if (static_key_false(&ingress_needed)) {   /* 流控相关，tc/qos */
 		skb = sch_handle_ingress(skb, &pt_prev, &ret, orig_dev);
 		if (!skb)
 			goto out;
@@ -4158,7 +4162,7 @@ ncls:
 	}
 
 	rx_handler = rcu_dereference(skb->dev->rx_handler);
-	if (rx_handler) {
+	if (rx_handler) {                          /* 特殊接口接收函数，如加入网桥的接口 br_handle_frame() */
 		if (pt_prev) {
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 			pt_prev = NULL;
@@ -4208,7 +4212,7 @@ ncls:
 	if (pt_prev) {
 		if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
 			goto drop;
-		else
+		else                                   /* 精确匹配分发，对于IPv4调用 ip_rcv() */
 			ret = pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
 	} else {
 drop:
@@ -4836,6 +4840,7 @@ static bool sd_has_rps_ipi_waiting(struct softnet_data *sd)
 #endif
 }
 
+/* 非NAPI模式下，接收报文的处理函数 */
 static int process_backlog(struct napi_struct *napi, int quota)
 {
 	struct softnet_data *sd = container_of(napi, struct softnet_data, backlog);
@@ -4856,7 +4861,7 @@ static int process_backlog(struct napi_struct *napi, int quota)
 
 		while ((skb = __skb_dequeue(&sd->process_queue))) {
 			rcu_read_lock();
-			__netif_receive_skb(skb);
+			__netif_receive_skb(skb);     /* 向L2层上送 */
 			rcu_read_unlock();
 			input_queue_head_incr(sd);
 			if (++work >= quota)
@@ -4877,7 +4882,7 @@ static int process_backlog(struct napi_struct *napi, int quota)
 			 */
 			napi->state = 0;
 			again = false;
-		} else {
+		} else {                          /* 挂接到临时处理队列 */
 			skb_queue_splice_tail_init(&sd->input_pkt_queue,
 						   &sd->process_queue);
 		}
@@ -5157,8 +5162,8 @@ static int napi_poll(struct napi_struct *n, struct list_head *repoll)
 	 */
 	work = 0;
 	if (test_bit(NAPI_STATE_SCHED, &n->state)) {
-		work = n->poll(n, weight);
-		trace_napi_poll(n, work, weight);
+		work = n->poll(n, weight);           /* 非NAPI调用 process_backlog() */
+		trace_napi_poll(n, work, weight);    /* e1000 NAPI调用 e1000_clean() */
 	}
 
 	WARN_ON_ONCE(work > weight);
@@ -5192,7 +5197,7 @@ static int napi_poll(struct napi_struct *n, struct list_head *repoll)
 		goto out_unlock;
 	}
 
-	list_add_tail(&n->poll_list, repoll);
+	list_add_tail(&n->poll_list, repoll);      /* 仍有剩余待处理的帧，加到尾部，等待下一次轮询 */
 
 out_unlock:
 	netpoll_poll_unlock(have);
@@ -5200,6 +5205,7 @@ out_unlock:
 	return work;
 }
 
+/* 内核接收报文软中断 */
 static __latent_entropy void net_rx_action(struct softirq_action *h)
 {
 	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
@@ -5209,9 +5215,10 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 	LIST_HEAD(repoll);
 
 	local_irq_disable();
-	list_splice_init(&sd->poll_list, &list);
+	list_splice_init(&sd->poll_list, &list);   /* 提取待轮询的设备列表 */
 	local_irq_enable();
 
+    /* 遍历设备，处理帧 */
 	for (;;) {
 		struct napi_struct *n;
 
@@ -5222,13 +5229,13 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 		}
 
 		n = list_first_entry(&list, struct napi_struct, poll_list);
-		budget -= napi_poll(n, &repoll);
+		budget -= napi_poll(n, &repoll);       /* 处理 */
 
 		/* If softirq window is exhausted then punt.
 		 * Allow this to run for 2 jiffies since which will allow
 		 * an average latency of 1.5/HZ.
 		 */
-		if (unlikely(budget <= 0 ||
+		if (unlikely(budget <= 0 ||            /* 主动放弃CPU，防止独占 */
 			     time_after_eq(jiffies, time_limit))) {
 			sd->time_squeeze++;
 			break;
@@ -5238,12 +5245,14 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 	__kfree_skb_flush();
 	local_irq_disable();
 
+    /* 未处理完的部分挂回原地 */
 	list_splice_tail_init(&sd->poll_list, &list);
 	list_splice_tail(&repoll, &list);
 	list_splice(&list, &sd->poll_list);
 	if (!list_empty(&sd->poll_list))
-		__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+		__raise_softirq_irqoff(NET_RX_SOFTIRQ);/* 触发下一次软中断 */
 
+    /* RPS相关 */
 	net_rps_action_and_irq_enable(sd);
 }
 
@@ -6656,7 +6665,7 @@ EXPORT_SYMBOL(dev_change_proto_down);
  *	@fd: new program fd or negative value to clear
  *
  *	Set or clear a bpf program for a device
- */
+ *//* 为网络设备设置、清除ebpf过滤程序 */
 int dev_change_xdp_fd(struct net_device *dev, int fd)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
@@ -6666,7 +6675,7 @@ int dev_change_xdp_fd(struct net_device *dev, int fd)
 
 	if (!ops->ndo_xdp)
 		return -EOPNOTSUPP;
-	if (fd >= 0) {
+	if (fd >= 0) {           /* 获取xdp类型的ebpf */
 		prog = bpf_prog_get_type(fd, BPF_PROG_TYPE_XDP);
 		if (IS_ERR(prog))
 			return PTR_ERR(prog);
@@ -6675,7 +6684,7 @@ int dev_change_xdp_fd(struct net_device *dev, int fd)
 	xdp.command = XDP_SETUP_PROG;
 	xdp.prog = prog;
 	err = ops->ndo_xdp(dev, &xdp);
-	if (err < 0 && prog)
+	if (err < 0 && prog)     /* 挂接ebpf程序 */
 		bpf_prog_put(prog);
 
 	return err;
@@ -7133,7 +7142,7 @@ EXPORT_SYMBOL(netif_tx_stop_all_queues);
  *	The locking appears insufficient to guarantee two parallel registers
  *	will not get the same name.
  */
-
+/* 注册网络设备到内核，并向 netdev_chain 通知链发送 NETDEV_REGISTER 消息 */
 int register_netdevice(struct net_device *dev)
 {
 	int ret;
@@ -7151,6 +7160,7 @@ int register_netdevice(struct net_device *dev)
 	spin_lock_init(&dev->addr_list_lock);
 	netdev_set_addr_lockdep_class(dev);
 
+    /* 完成名字具体化，eth%d ---> eth0 */
 	ret = dev_get_valid_name(net, dev, dev->name);
 	if (ret < 0)
 		goto out;
@@ -7174,6 +7184,7 @@ int register_netdevice(struct net_device *dev)
 		goto err_uninit;
 	}
 
+    /* 分配唯一索引号 */
 	ret = -EBUSY;
 	if (!dev->ifindex)
 		dev->ifindex = dev_new_index(net);
@@ -7216,11 +7227,13 @@ int register_netdevice(struct net_device *dev)
 	 */
 	dev->mpls_features |= NETIF_F_SG;
 
+    /* 向 netdev_chain 发送 NETDEV_POST_INIT 消息 */
 	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);
 	ret = notifier_to_errno(ret);
 	if (ret)
 		goto err_uninit;
 
+    /* 添加到内核系统 */
 	ret = netdev_register_kobject(dev);
 	if (ret)
 		goto err_uninit;
@@ -7232,15 +7245,14 @@ int register_netdevice(struct net_device *dev)
 	 *	Default initial state at registry is that the
 	 *	device is present.
 	 */
-
 	set_bit(__LINK_STATE_PRESENT, &dev->state);
 
 	linkwatch_init_dev(dev);
 
-	dev_init_scheduler(dev);
+	dev_init_scheduler(dev);       /* QoS相关 */
 	dev_hold(dev);
-	list_netdevice(dev);
-	add_device_randomness(dev->dev_addr, dev->addr_len);
+	list_netdevice(dev);           /* 加入struct net对应的搜索hash表、链表 */
+	add_device_randomness(dev->dev_addr, dev->addr_len);   /* 初始化熵池 */
 
 	/* If the device has permanent device address, driver should
 	 * set dev_addr and also addr_assign_type should be set to
@@ -7249,7 +7261,7 @@ int register_netdevice(struct net_device *dev)
 	if (dev->addr_assign_type == NET_ADDR_PERM)
 		memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
 
-	/* Notify protocols, that a new device appeared. */
+	/* 向 netdev_chain 发送 NETDEV_REGISTER 消息；Notify protocols, that a new device appeared. */
 	ret = call_netdevice_notifiers(NETDEV_REGISTER, dev);
 	ret = notifier_to_errno(ret);
 	if (ret) {
@@ -7259,7 +7271,7 @@ int register_netdevice(struct net_device *dev)
 	/*
 	 *	Prevent userspace races by waiting until the network
 	 *	device is fully setup before sending notifications.
-	 */
+	 *//* 向监听组(RTMGRP_LINK)发送netlink消息，已通知用户态 */
 	if (!dev->rtnl_link_ops ||
 	    dev->rtnl_link_state == RTNL_LINK_INITIALIZED)
 		rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U, GFP_KERNEL);
@@ -7327,7 +7339,7 @@ EXPORT_SYMBOL_GPL(init_dummy_netdev);
  *	This is a wrapper around register_netdevice that takes the rtnl semaphore
  *	and expands the device name if you passed a format string to
  *	alloc_netdev.
- */
+ *//* 加锁的包裹函数 */
 int register_netdev(struct net_device *dev)
 {
 	int err;
@@ -8285,23 +8297,27 @@ static struct pernet_operations __net_initdata default_device_ops = {
 /*
  *       This is called single threaded during boot, so no need
  *       to take the rtnl semaphore.
- */
+ *//* 网络代码初始化的重要部分，包括流量控制和各个CPU入口队列 */
 static int __init net_dev_init(void)
 {
 	int i, rc = -ENOMEM;
 
 	BUG_ON(!dev_boot_phase);
 
+    /* 向/proc注册 */
 	if (dev_proc_init())
 		goto out;
 
+    /* 向/sys注册 */
 	if (netdev_kobject_init())
 		goto out;
 
+    /* 初始化协议处理句柄 */
 	INIT_LIST_HEAD(&ptype_all);
 	for (i = 0; i < PTYPE_HASH_SIZE; i++)
 		INIT_LIST_HEAD(&ptype_base[i]);
 
+    /* */
 	INIT_LIST_HEAD(&offload_base);
 
 	if (register_pernet_subsys(&netdev_net_ops))
@@ -8309,8 +8325,7 @@ static int __init net_dev_init(void)
 
 	/*
 	 *	Initialise the packet receive queues.
-	 */
-
+	 *//* 初始化接收、发送队列 */
 	for_each_possible_cpu(i) {
 		struct work_struct *flush = per_cpu_ptr(&flush_works, i);
 		struct softnet_data *sd = &per_cpu(softnet_data, i);
@@ -8327,7 +8342,7 @@ static int __init net_dev_init(void)
 		sd->cpu = i;
 #endif
 
-		sd->backlog.poll = process_backlog;
+		sd->backlog.poll = process_backlog;    /* 设置非NAPI模式下接收报文的处理函数 */
 		sd->backlog.weight = weight_p;
 	}
 
@@ -8341,17 +8356,21 @@ static int __init net_dev_init(void)
 	 * list of network devices.  Ensuring the loopback devices
 	 * is the first device that appears and the last network device
 	 * that disappears.
-	 */
+	 *//* 注册loopback口 */
 	if (register_pernet_device(&loopback_net_ops))
 		goto out;
 
 	if (register_pernet_device(&default_device_ops))
 		goto out;
 
+    /* 注册软中断，发送、接收 */
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 
+    /* 注册到cpu热插拔事件的通知链 */
 	hotcpu_notifier(dev_cpu_callback, 0);
+
+    /* 路由缓存(协议无关部分)初始化 */
 	dst_subsys_init();
 	rc = 0;
 out:

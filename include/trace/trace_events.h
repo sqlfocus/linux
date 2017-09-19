@@ -31,8 +31,10 @@
 	static const char TRACE_SYSTEM_STRING[] =	\
 		__stringify(TRACE_SYSTEM)
 
+/* 定义跟踪点集合名(group) */
 TRACE_MAKE_SYSTEM_STR();
 
+/* 定义enum变量，使得TP_printk()输出enum时为其值，而不是其名 */
 #undef TRACE_DEFINE_ENUM
 #define TRACE_DEFINE_ENUM(a)				\
 	static struct trace_enum_map __used __initdata	\
@@ -54,7 +56,7 @@ TRACE_MAKE_SYSTEM_STR();
  * will map the DECLARE_EVENT_CLASS to the tracepoint.
  *
  * TRACE_EVENT is a one to one mapping between tracepoint and template.
- */
+ *//* DECLARE_EVENT_CLASS可以使得具有相同输出格式的tracepoint共享一套接口 */
 #undef TRACE_EVENT
 #define TRACE_EVENT(name, proto, args, tstruct, assign, print) \
 	DECLARE_EVENT_CLASS(name,			       \
@@ -137,6 +139,7 @@ TRACE_MAKE_SYSTEM_STR();
 #define TRACE_EVENT_PERF_PERM(name, expr...)				\
 	__TRACE_EVENT_PERF_PERM(name, expr)
 
+/* 第3次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 /*
@@ -201,6 +204,7 @@ TRACE_MAKE_SYSTEM_STR();
 #undef TRACE_EVENT_PERF_PERM
 #define TRACE_EVENT_PERF_PERM(event, expr...)
 
+/* 第4次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 /*
@@ -358,6 +362,7 @@ static struct trace_event_functions trace_event_type_funcs_##call = {	\
 	.trace			= trace_raw_output_##call,		\
 };
 
+/* 第5次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 #undef __field_ext
@@ -430,6 +435,7 @@ trace_event_define_fields_##call(struct trace_event_call *event_call)	\
 #define DEFINE_EVENT_PRINT(template, name, proto, args, print)	\
 	DEFINE_EVENT(template, name, PARAMS(proto), PARAMS(args))
 
+/* 第6次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 /*
@@ -510,6 +516,7 @@ static inline notrace int trace_event_get_offsets_##call(		\
 #define DEFINE_EVENT_PRINT(template, name, proto, args, print)	\
 	DEFINE_EVENT(template, name, PARAMS(proto), PARAMS(args))
 
+/* 第7次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 /*
@@ -703,6 +710,7 @@ static inline void ftrace_test_probe_##call(void)			\
 #undef DEFINE_EVENT_PRINT
 #define DEFINE_EVENT_PRINT(template, name, proto, args, print)
 
+/* 第8次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 #undef __entry
@@ -766,4 +774,5 @@ static struct trace_event_call __used event_##call = {			\
 static struct trace_event_call __used					\
 __attribute__((section("_ftrace_events"))) *__event_##call = &event_##call
 
+/* 第9次引用头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)

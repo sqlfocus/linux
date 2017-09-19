@@ -11,6 +11,7 @@ struct sk_buff;
 struct sock;
 struct net;
 
+/* 虚函数表，用于向L3通告特定的事件 */
 struct dst_ops {
 	unsigned short		family;
 	unsigned int		gc_thresh;

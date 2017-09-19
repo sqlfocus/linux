@@ -87,10 +87,11 @@ extern bool static_key_initialized;
 
 #ifdef HAVE_JUMP_LABEL
 
+/* jump label结构，用于优化tracepoint点判断条件 */
 struct static_key {
-	atomic_t enabled;
+	atomic_t enabled;             /* 是否使能 */
 /* Set lsb bit to 1 if branch is default true, 0 ot */
-	struct jump_entry *entries;
+	struct jump_entry *entries;   /* 跳转表，jump table */
 #ifdef CONFIG_MODULES
 	struct static_key_mod *next;
 #endif
@@ -110,8 +111,8 @@ struct static_key {
 #ifndef __ASSEMBLY__
 
 enum jump_label_type {
-	JUMP_LABEL_NOP = 0,
-	JUMP_LABEL_JMP,
+	JUMP_LABEL_NOP = 0,   /* */
+	JUMP_LABEL_JMP,       /* */
 };
 
 struct module;
@@ -122,18 +123,18 @@ struct module;
 #define JUMP_TYPE_TRUE	1UL
 #define JUMP_TYPE_MASK	1UL
 
+/* 已废弃的分支条件判断(利用gcc拓展属性使得函数调用以类似宏的方式展开) */
 static __always_inline bool static_key_false(struct static_key *key)
 {
 	return arch_static_branch(key, false);
 }
-
 static __always_inline bool static_key_true(struct static_key *key)
 {
 	return !arch_static_branch(key, true);
 }
 
 extern struct jump_entry __start___jump_table[];
-extern struct jump_entry __stop___jump_table[];
+extern struct jump_entry __stop___jump_table[];      /* jump label跳转表 */
 
 extern void jump_label_init(void);
 extern void jump_label_lock(void);
@@ -263,26 +264,23 @@ struct static_key_false {
 	struct static_key key;
 };
 
+/* 分别定义默认条件成立、不成立的case */
 #define STATIC_KEY_TRUE_INIT  (struct static_key_true) { .key = STATIC_KEY_INIT_TRUE,  }
 #define STATIC_KEY_FALSE_INIT (struct static_key_false){ .key = STATIC_KEY_INIT_FALSE, }
 
+/* 定义tracepoint点的jump label */
 #define DEFINE_STATIC_KEY_TRUE(name)	\
 	struct static_key_true name = STATIC_KEY_TRUE_INIT
-
 #define DECLARE_STATIC_KEY_TRUE(name)	\
 	extern struct static_key_true name
-
 #define DEFINE_STATIC_KEY_FALSE(name)	\
 	struct static_key_false name = STATIC_KEY_FALSE_INIT
-
 #define DECLARE_STATIC_KEY_FALSE(name)	\
 	extern struct static_key_false name
-
 #define DEFINE_STATIC_KEY_ARRAY_TRUE(name, count)		\
 	struct static_key_true name[count] = {			\
 		[0 ... (count) - 1] = STATIC_KEY_TRUE_INIT,	\
 	}
-
 #define DEFINE_STATIC_KEY_ARRAY_FALSE(name, count)		\
 	struct static_key_false name[count] = {			\
 		[0 ... (count) - 1] = STATIC_KEY_FALSE_INIT,	\
@@ -355,12 +353,15 @@ extern bool ____wrong_branch_error(void);
  *   static:  instruction = type ^ branch
  *
  * See jump_label_type() / jump_label_init_type().
+ *
+ * 此处给出了计算指令的方法
  */
-
+/* 判断分支是否为true： 为了尽最大可能减少代码的跳跃，分两种情况组织jump label，
+   初始条件为true，初始条件为false */
 #define static_branch_likely(x)							\
 ({										\
 	bool branch;								\
-	if (__builtin_types_compatible_p(typeof(*x), struct static_key_true))	\
+	if (__builtin_types_compatible_p(typeof(*x), struct static_key_true))/* gcc拓展属性，确定两个类型是否相同 */ \
 		branch = !arch_static_branch(&(x)->key, true);			\
 	else if (__builtin_types_compatible_p(typeof(*x), struct static_key_false)) \
 		branch = !arch_static_branch_jump(&(x)->key, true);		\

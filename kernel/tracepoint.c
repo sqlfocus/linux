@@ -189,15 +189,17 @@ static void *func_remove(struct tracepoint_func **funcs,
 
 /*
  * Add the probe function to a tracepoint.
- */
+ *//* 向tracepoint点注册探针函数 */
 static int tracepoint_add_func(struct tracepoint *tp,
 			       struct tracepoint_func *func, int prio)
 {
 	struct tracepoint_func *old, *tp_funcs;
 
+    /* 第一次注册，执行对应的回调函数 */
 	if (tp->regfunc && !static_key_enabled(&tp->key))
 		tp->regfunc();
 
+    /* 按优先级注册 */
 	tp_funcs = rcu_dereference_protected(tp->funcs,
 			lockdep_is_held(&tracepoints_mutex));
 	old = func_add(&tp_funcs, func, prio);
@@ -212,10 +214,10 @@ static int tracepoint_add_func(struct tracepoint *tp,
 	 * This array is referenced by __DO_TRACE from
 	 * include/linux/tracepoints.h. A matching smp_read_barrier_depends()
 	 * is used.
-	 */
+	 *//* 更新探针数组 */
 	rcu_assign_pointer(tp->funcs, tp_funcs);
 	if (!static_key_enabled(&tp->key))
-		static_key_slow_inc(&tp->key);
+		static_key_slow_inc(&tp->key);    /* jump label操作，开启tracepoint */
 	release_probes(old);
 	return 0;
 }
@@ -293,7 +295,7 @@ EXPORT_SYMBOL_GPL(tracepoint_probe_register_prio);
  * unregistering the probe before the module is gone. This can be
  * performed either with a tracepoint module going notifier, or from
  * within module exit functions.
- */
+ *//* 向tracepoint注册探针函数 */
 int tracepoint_probe_register(struct tracepoint *tp, void *probe, void *data)
 {
 	return tracepoint_probe_register_prio(tp, probe, data, TRACEPOINT_DEFAULT_PRIO);

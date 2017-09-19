@@ -45,7 +45,7 @@
 #include <asm/kprobes.h>
 
 /* kprobe_status settings */
-#define KPROBE_HIT_ACTIVE	0x00000001
+#define KPROBE_HIT_ACTIVE	0x00000001     /* 命中了kprobe探测点 */
 #define KPROBE_HIT_SS		0x00000002
 #define KPROBE_REENTER		0x00000004
 #define KPROBE_HIT_SSDONE	0x00000008
@@ -78,7 +78,7 @@ struct kprobe {
 	/* 支持同一探测点多个探测函数；list of kprobes for multi-handler support */
 	struct list_head list;
 
-	/* count the number of times this probe was temporarily disarmed */
+	/* 错过触发并执行探针的次数；count the number of times this probe was temporarily disarmed */
 	unsigned long nmissed;
 
 	/* 被探测的目标地址，location of the probe point */
@@ -111,7 +111,8 @@ struct kprobe {
 	/* 保存被替换的指令码，Saved opcode (which has been replaced with breakpoint) */
 	kprobe_opcode_t opcode;
 
-	/* 保存被替换的指令码，copy of the original instruction */
+	/* 复制的被探测点的原始指令码，用于单独执行，架构强相关
+       copy of the original instruction */
 	struct arch_specific_insn ainsn;
 
 	/*
@@ -167,7 +168,7 @@ static inline int kprobe_ftrace(struct kprobe *p)
  */
 struct jprobe {
 	struct kprobe kp;
-	void *entry;	/* probe handling code to jump to */
+	void *entry;	    /* 探测点探针函数地址，probe handling code to jump to */
 };
 
 /* For backward compatibility with old code using JPROBE_ENTRY() */
@@ -185,21 +186,26 @@ struct jprobe {
  */
 struct kretprobe {
 	struct kprobe kp;
-	kretprobe_handler_t handler;
-	kretprobe_handler_t entry_handler;
-	int maxactive;
-	int nmissed;
-	size_t data_size;
-	struct hlist_head free_instances;
+	kretprobe_handler_t handler;          /* 探测点返回后被调用 */
+	kretprobe_handler_t entry_handler;    /* 探测点之前被调用 */
+	int maxactive;                        /* 并行探测上限 */
+	int nmissed;                          /* 由于超过maxactive而错过的探测次数 */
+	size_t data_size;                     /* 私有数据大小 */
+	struct hlist_head free_instances;     /* 空闲实例链，struct kretprobe_instance */
 	raw_spinlock_t lock;
 };
 
+/* 这个结构体表示kretprobe的运行实例，被探测函数在跟踪期间可能存在并发执行
+   的现象，因此kretprobe使用一个kretprobe_instance来跟踪一个执行流，支持的
+   上限为maxactive。在没有触发探测时，所有的kretprobe_instance实例都保存在
+   free_instances表中，每当有执行流触发一次kretprobe探测，都会从该表中取出
+   一个空闲的kretprobe_instance实例用来跟踪。*/
 struct kretprobe_instance {
 	struct hlist_node hlist;
-	struct kretprobe *rp;
-	kprobe_opcode_t *ret_addr;
-	struct task_struct *task;
-	char data[0];
+	struct kretprobe *rp;            /* 指向所属的struct kretprobe */
+	kprobe_opcode_t *ret_addr;       /* 被探测函数的原始地址 */
+	struct task_struct *task;        /* 绑定其跟踪的进程 */
+	char data[0];                    /* 私有数据 */
 };
 
 struct kretprobe_blackpoint {
@@ -487,7 +493,9 @@ static inline int enable_jprobe(struct jprobe *jp)
 /*
  * Blacklist ganerating macro. Specify functions which is not probed
  * by using this macro.
- */
+ *//* 此宏用于产生kprobe探测的黑名单；由连接器放置到_kprobe_blacklist中；
+      当kprobe模块儿初始化时，调用init_kprobes()解析此段的地址，并记录
+      到kprobe_blacklist链表 */
 #define __NOKPROBE_SYMBOL(fname)			\
 static unsigned long __used				\
 	__attribute__((section("_kprobe_blacklist")))	\

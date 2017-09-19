@@ -19,7 +19,7 @@
  ****/
 
 /* Types of messages */
-
+/* NETLINK_ROUTE类型的netlink支持的消息类型 */
 enum {
 	RTM_BASE	= 16,
 #define RTM_BASE	RTM_BASE
@@ -259,14 +259,14 @@ enum {
    Intermediate values are also possible f.e. interior routes
    could be assigned a value between UNIVERSE and LINK.
 */
-
+/* 到达地址的距离 */
 enum rt_scope_t {
-	RT_SCOPE_UNIVERSE=0,
+	RT_SCOPE_UNIVERSE=0,   /* 通往远程非直连目的地 */
 /* User defined values  */
-	RT_SCOPE_SITE=200,
-	RT_SCOPE_LINK=253,
-	RT_SCOPE_HOST=254,
-	RT_SCOPE_NOWHERE=255
+	RT_SCOPE_SITE=200,     /*  */
+	RT_SCOPE_LINK=253,     /* 本地网络地址或子网广播地址 */
+	RT_SCOPE_HOST=254,     /* 本地接口配置IP */
+	RT_SCOPE_NOWHERE=255   /* 非法scope，路由项不通往任何地方 */
 };
 
 /* rtm_flags */
@@ -284,8 +284,8 @@ enum rt_class_t {
 /* User defined values */
 	RT_TABLE_COMPAT=252,
 	RT_TABLE_DEFAULT=253,
-	RT_TABLE_MAIN=254,
-	RT_TABLE_LOCAL=255,
+	RT_TABLE_MAIN=254,       /* main表 */
+	RT_TABLE_LOCAL=255,      /* local表 */
 	RT_TABLE_MAX=0xFFFFFFFF
 };
 
@@ -476,13 +476,12 @@ struct rtgenmsg {
 /* struct ifinfomsg
  * passes link level specific information, not dependent
  * on network protocol.
- */
-
+ *//* 创建，删除或者获取网络设备的信息 */
 struct ifinfomsg {
-	unsigned char	ifi_family;
+	unsigned char	ifi_family; /* 接口地址类型，如AF_INET6 */
 	unsigned char	__ifi_pad;
-	unsigned short	ifi_type;		/* ARPHRD_* */
-	int		ifi_index;		/* Link index	*/
+	unsigned short	ifi_type;   /* ARPHRD_*, 如 ARPHRD_EHTER */
+	int		ifi_index;		    /* 接口ID号，跟名字无关，Link index	*/
 	unsigned	ifi_flags;		/* IFF_* flags	*/
 	unsigned	ifi_change;		/* IFF_* change mask */
 };
@@ -576,8 +575,9 @@ enum {
 #define NDUSEROPT_MAX	(__NDUSEROPT_MAX - 1)
 
 #ifndef __KERNEL__
-/* RTnetlink multicast groups - backwards compatibility for userspace */
-#define RTMGRP_LINK		1
+/* 用户态应用程序监听以下netlink广播组，可接收内核事件；
+   RTnetlink multicast groups - backwards compatibility for userspace */
+#define RTMGRP_LINK		1               /* 网络设备注册、卸载、关闭、开启事件 */
 #define RTMGRP_NOTIFY		2
 #define RTMGRP_NEIGH		4
 #define RTMGRP_TC		8

@@ -36,9 +36,9 @@
 struct sock;
 
 struct inet_skb_parm {
-	int			iif;
-	struct ip_options	opt;		/* Compiled IP options		*/
-	u16			flags;
+	int			iif;            /* 收包接口索引 */
+	struct ip_options	opt;	/* IP选项，Compiled IP options */
+	u16			flags;          /* IP标识 */
 
 #define IPSKB_FORWARDED		BIT(0)
 #define IPSKB_XFRM_TUNNEL_SIZE	BIT(1)
@@ -50,7 +50,7 @@ struct inet_skb_parm {
 #define IPSKB_FRAG_SEGS		BIT(7)
 #define IPSKB_L3SLAVE		BIT(8)
 
-	u16			frag_max_size;
+	u16			frag_max_size;  /* */
 };
 
 static inline bool ipv4_l3mdev_skb(u16 flags)

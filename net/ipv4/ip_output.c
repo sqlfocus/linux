@@ -219,7 +219,7 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	if (unlikely(!neigh))
 		neigh = __neigh_create(&arp_tbl, &nexthop, dev, false);
 	if (!IS_ERR(neigh)) {
-		int res = dst_neigh_output(dst, neigh, skb);
+		int res = dst_neigh_output(dst, neigh, skb);  /* 邻居系统 */
 
 		rcu_read_unlock_bh();
 		return res;
@@ -289,13 +289,16 @@ static int ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *sk
 		return dst_output(net, sk, skb);
 	}
 #endif
+    /* GSO */
 	mtu = ip_skb_dst_mtu(sk, skb);
 	if (skb_is_gso(skb))
 		return ip_finish_output_gso(net, sk, skb, mtu);
 
+    /* 分片 */
 	if (skb->len > mtu || (IPCB(skb)->flags & IPSKB_FRAG_PMTU))
 		return ip_fragment(net, sk, skb, mtu, ip_finish_output2);
 
+    /* 普通转发 */
 	return ip_finish_output2(net, sk, skb);
 }
 
@@ -361,6 +364,7 @@ int ip_mc_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }
 
+/* 转发发送入口 */
 int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev;
@@ -370,6 +374,7 @@ int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 	skb->dev = dev;
 	skb->protocol = htons(ETH_P_IP);
 
+    /* 路由后hook点 */
 	return NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,
 			    net, sk, skb, NULL, dev,
 			    ip_finish_output,
@@ -409,7 +414,7 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	inet_opt = rcu_dereference(inet->inet_opt);
 	fl4 = &fl->u.ip4;
 	rt = skb_rtable(skb);
-	if (rt)
+	if (rt)                    /* 路由已确定，略过路由查找流程 */
 		goto packet_routed;
 
 	/* Make sure we can route this packet. */
@@ -425,7 +430,7 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 		/* If this fails, retransmit mechanism of transport layer will
 		 * keep trying until route appears or the connection times
 		 * itself out.
-		 */
+		 */                    /* 查找路由 */
 		rt = ip_route_output_ports(net, fl4, sk,
 					   daddr, inet->inet_saddr,
 					   inet->inet_dport,
@@ -443,7 +448,7 @@ packet_routed:
 	if (inet_opt && inet_opt->opt.is_strictroute && rt->rt_uses_gateway)
 		goto no_route;
 
-	/* OK, we know where to send it, allocate and build IP header. */
+	/* 构建IP头；OK, we know where to send it, allocate and build IP header. */
 	skb_push(skb, sizeof(struct iphdr) + (inet_opt ? inet_opt->opt.optlen : 0));
 	skb_reset_network_header(skb);
 	iph = ip_hdr(skb);
@@ -456,13 +461,13 @@ packet_routed:
 	iph->protocol = sk->sk_protocol;
 	ip_copy_addrs(iph, fl4);
 
-	/* Transport layer set skb->h.foo itself. */
-
+	/* 构建IP选项，Transport layer set skb->h.foo itself. */
 	if (inet_opt && inet_opt->opt.optlen) {
 		iph->ihl += inet_opt->opt.optlen >> 2;
 		ip_options_build(skb, &inet_opt->opt, inet->inet_daddr, rt, 0);
 	}
 
+    /* 设置IP ID */
 	ip_select_ident_segs(net, skb, sk,
 			     skb_shinfo(skb)->gso_segs ?: 1);
 
@@ -470,6 +475,7 @@ packet_routed:
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
 
+    /* 发送 */
 	res = ip_local_out(net, sk, skb);
 	rcu_read_unlock();
 	return res;
@@ -1174,7 +1180,7 @@ static int ip_setup_cork(struct sock *sk, struct inet_cork *cork,
  *	this interface potentially.
  *
  *	LATER: length must be adjusted by pad at tail, when it is required.
- */
+ *//* 临时放置数据到缓存区，并不发送；需调用 ip_push_pending_frames() 触发发送 */
 int ip_append_data(struct sock *sk, struct flowi4 *fl4,
 		   int getfrag(void *from, char *to, int offset, int len,
 			       int odd, struct sk_buff *skb),
@@ -1620,12 +1626,13 @@ out:
 	ip_rt_put(rt);
 }
 
+/* L3层初始化，链接到__section(.init.text)段 */
 void __init ip_init(void)
 {
-	ip_rt_init();
-	inet_initpeers();
+	ip_rt_init();         /* 初始化路由子系统 */
+	inet_initpeers();     /* 初始化主机节点管理系统 */
 
 #if defined(CONFIG_IP_MULTICAST)
-	igmp_mc_init();
+	igmp_mc_init();       /* */
 #endif
 }

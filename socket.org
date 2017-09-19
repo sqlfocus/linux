@@ -11,8 +11,40 @@ connect()/read()/write()/close()；后续分章节，以插口操作为入口点
 linux的TCP/IP协议栈。
 
 * 初始化流程
+一个网络设备可用，就必须被内核认可，并且关联正确的驱动程序；驱动程序把
+驱动设备所需的所有信息存储在私有数据结构中，然后与其他需要此设备的内核
+组件交互；注册和初始化的一部分由内核负责，其他部分由设备驱动程序负责
+ - 硬件初始化       :: 由驱动程序和通用总线层完成
+ - 软件初始化       :: 依赖用户配置
+ - 功能初始化       :: 依赖网络选项
+
+#+BEGIN_EXAMPLE
+内核初始化流程
+-start_kernel()                         内核C语言入口，~/init/main.c
+  -parse_early_param()
+  -parse_args()                         解析参数
+  -softirq_init()                       注册软中断, TASKLET_SOFTIRQ/HI_SOFTIRQ
+  -rest_init()
+    -kernel_thread()                    启动init进程，kernel_init()
+      -kernel_init_freeable()
+        -do_basic_setup()
+          -do_initcalls()
+            -do_initcall_level()
+              -do_one_initcall()        执行early_initcall/core_initcall()等注册的初始化函数
+              -->net_dev_init()         通过 subsys_initcall() 注册，level 4
+              -->inet_init()            通过 fs_initcall() 注册，level 5
+                -arp_init()             ARP邻居子系统协议初始化
+                -ip_init()              IPv4初始化
+                -ipfrag_init()          分片重组系统初始化
+                -dev_add_pack()         注册IPv4报文类型，ip_packet_type，包含了L3入口ip_rcv()
+#+END_EXAMPLE
+
+** arp_init()
+注册ARP邻居子系统，定义在~/net/ipv4/arp.c
+
+** inet_init()
 网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
-操作集合。
+操作集合。协议栈初始化入口，定义在~/net/ipv4/af_inet.c文件
   #+BEGIN_EXAMPLE
   -start_kernel()                       ~/init/main.c
     -rest_init()
@@ -39,11 +71,35 @@ linux的TCP/IP协议栈。
       -inet_hashinfo_init()             初始化tcp_hashinfo的监听队列
       -register_pernet_subsys()         注册网络命名空间的操控集tcp_sk_ops
     -tcp_init()                         建立TCP请求的缓存，初始化各种内存限制，~/net/ipv4/tcp.c
+    -dev_add_pack()                     注册IPv4对应的l3报文类型
   #+END_EXAMPLE
 
+** ip_init()
+此函数初始化IPv4协议栈，定义在~/net/ipv4/ip_output.c
+#+BEGIN_EXAMPLE
+-ip_init()
+  -ip_rt_init()                         路由子系统初始化
+  -inet_initpeers()                     管理IP端点的基础系统
+  -igmp_mc_init()
+#+END_EXAMPLE
+
+** ipfrag_init()
+此函数初始化分片重组所需的变量、hash方法等，定义在~/net/ipv4/ip_fragment.c
+
+** net_dev_init()
+流量控制、入口队列初始化，定义在~/net/core/dev.c
+#+BEGIN_EXAMPLE
+-register_pernet_device(&loopback_net_ops)   注册loopback口
+-open_softirq()                              注册软中断，NET_TX_SOFTIRQ/NET_RX_SOFTIRQ
+-dst_subsys_init()                           路由缓存初始化， ~/net/core/dst.c
+#+END_EXAMPLE
+
 * 全局变量
+** ~dev_boot_setup~
+内核引导期间通过参数"netdev="传入的网络接口配置信息，定义在~/net/core/dev.c
+
 ** ~inet_protos[]~
-此数组定义了内核支持的知名协议，当IP层上送数据时，用于查找并确定正确的四
+此数组定义了内核支持的知名L4协议，当IP层上送数据时，用于查找并确定正确的四
 层接收函数，如 =tcp_protocol= 等
   #+BEGIN_EXAMPLE
   ~/net/ipv4/protocol.c
@@ -72,6 +128,12 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
       ...
   };
   #+END_EXAMPLE
+
+** ~irq_desc[]~
+硬件中断向量表，定义在~/kernel/irq/irqdesc.c
+
+** ~neigh_tables[]~
+内核注册的支持的邻居协议，定义在~/net/core/neighbour.c
 
 ** ~net_families[]~
 此数组定义了内核支持的所有domain - 协议族，如 =AF_UNIX= 对应的等
@@ -103,6 +165,15 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
   };
   #+END_EXAMPLE
 
+** ~raw_v4_hashinfo~
+存储用户态创建的SOCK_RAW插口的hash表，定义在~/net/ipv4/raw.c
+
+** ~softirq_vec[]~
+软中断向量表，定义在~/kernel/softirq.c
+
+** ~softnet_data~
+每CPU队列，存放收到的报文，定义在~/include/linux/netdevice.h
+
 ** ~tcp_death_row~
 此结构定义了TIMEWAIT插口队列及其参数。
   #+BEGIN_EXAMPLE
@@ -121,6 +192,184 @@ inetsw_array[]是持久的初始化在内核代码中的传输层协议数组；
 
   struct inet_hashinfo tcp_hashinfo;
   #+END_EXAMPLE
+
+** ~ptype_base/ptype_all~
+内核注册的L3报文类型，包括协议值及处理函数等，~/net/core/dev.c
+ - arp_packet_type          :: ARP报文，net/ipv4/arp.c
+ - ip_packet_type           :: IP报文，net/ipv4/af_inet.c
+
+* L2接收
+处理L2层帧的函数是由中断事件驱动的
+ - 网卡接收到帧，触发中断
+ - CPU接收中断，执行do_IRQ()
+ - 根据中断表触发驱动程序注册的函数
+ - 中断处理函数执行立即性任务
+    : 拷贝sk_buff
+    : 初始化某些sk_buff参数
+    : 调度NET_RX_SOFTIRQ
+ - 软中断执行
+
+#+BEGIN_EXAMPLE
+中断处理流程
+-do_IRQ()                               中断处理入口，~/arch/x86/kernel/irq.c
+  -e1000_intr()                         e1000网卡中断处理函数，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+    -__napi_schedule()
+      -____napi_schedule()
+        -list_add_tail()                struct napi_struct->poll_list挂接到struct softnet_data->poll_list
+        -__raise_softirq_irqoff()       触发软中断NET_RX_SOFTIRQ
+#+END_EXAMPLE
+#+BEGIN_EXAMPLE
+软中断处理流程
+-net_rx_action()                        软中断NET_RX_SOFTIRQ入口，~/net/core/dev.c
+  -napi_poll()
+    -struct napi_struct->poll()         虚拟poll
+    -->process_backlog()                非NAPI通用接口，~/net/core/dev.c
+      -__netif_receive_skb()
+        -__netif_receive_skb_core()
+          -skb_vlan_untag()
+          -struct packet_type->func()
+          -->ip_rcv()                   L3层处理入口，~/net/ipv4/ip_input.c
+    -->e1000_clean()                    e1000的NAPI接口，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+      -struct e1000_adapter->clean_rx()
+      -->e1000_clean_rx_irq()
+        -e1000_receive_skb()
+          -napi_gro_receive()
+            -napi_skb_finish()
+              -netif_receive_skb_internal()
+                -__netif_receive_skb()
+#+END_EXAMPLE
+
+* 网桥接收
+网桥是学术上的名词，交换机是物理设备的名称，它们是对应的。网桥驱动程序
+定义在~/net/bridge/br.c
+
+#+BEGIN_EXAMPLE
+软中断处理流程
+-net_rx_action()                        软中断NET_RX_SOFTIRQ入口，~/net/core/dev.c
+  -napi_poll()
+    -struct napi_struct->poll()         虚拟poll
+    -->process_backlog()                非NAPI通用接口，~/net/core/dev.c
+      -__netif_receive_skb()
+        -__netif_receive_skb_core()
+          -skb_vlan_untag()
+          -struct sk_buff->dev->rx_handler()
+          -->br_handle_frame()          网桥处理入口，~/net/bridge/br_input.c
+            -br_handle_frame_finish()
+              ---br_forward()           转发
+              ---br_flood()             广播
+              ---br_pass_frame_up()     本地接收
+                -br_netif_receive_skb()
+                  -netif_receive_skb()
+                    -netif_receive_skb_internal()
+    -->e1000_clean()                    e1000的NAPI接口，~/drivers/net/ethernet/intel/e1000/e1000_main.c
+      -struct e1000_adapter->clean_rx()
+      -->e1000_clean_rx_irq()
+        -e1000_receive_skb()
+          -napi_gro_receive()
+            -napi_skb_finish()
+              -netif_receive_skb_internal()
+                -__netif_receive_skb()
+
+#+END_EXAMPLE
+
+* L3接收
+3层是网络协议的核心层，涉及邻居系统、路由系统、netfilter点等众多子系统，
+关联耦合性、复杂度相比其他都较高。
+#+BEGIN_EXAMPLE
+-ip_rcv()                           L3层处理入口，~/net/ipv4/ip_input.c
+  -ip_rcv_finish()
+    -ip_route_input_noref()         查路由，~/net/ipv4/route.c
+    -ip_rcv_options()               处理ip选项
+    -dst_input()
+      -->ip_local_deliver()         上传L4
+        -ip_defrag()                分片重组
+        -ip_local_deliver_finish()
+          -raw_local_deliver()
+            -raw_v4_input()         raw类型报文，~/net/ipv4/raw.c
+          ---tcp_v4_rcv()           TCP报文, ~/net/ipv4/tcp_ipv4.c
+          ---udp_rcv()              UDP报文, ~/net/ipv4/udp.c
+          ---icmp_rcv()             ICMP报文, ~/net/ipv4/icmp.c
+      -->ip_forward()               转发，~/net/ipv4/ip_forward.c
+        -ip_forward_finish()
+          -ip_forward_options()     构建ip选项
+          -dst_output()
+#+END_EXAMPLE
+
+* L3发送
+接收L4或者转发报文，并和邻居系统联动，最终发送出去
+#+BEGIN_EXAMPLE
+此函数一般由TCP、STCP使用，发送报文
+-ip_queue_xmit()                    ~/net/ipv4/ip_output.c
+  -ip_route_output_ports()          查路由
+  -ip_options_build()               构建IP选项
+  -ip_select_ident_segs()           设置IP ID
+  -ip_local_out()
+    -dst_output()
+      -->ip_output()                ~/net/ipv4/ip_output.c
+        ---ip_fragment()            分段发送
+          -ip_do_fragment()
+            -ip_finish_output2()
+        ---ip_finish_output()       非分段发送
+          -ip_finish_output2()
+            -dst_neigh_output()     邻居系统#+END_EXAMPLE
+#+END_EXAMPLE
+#+BEGIN_EXAMPLE
+此函数为raw或UDP等使用，发送报文
+-ip_append_data()                   缓存数据，待发送，~/net/ipv4/ip_output.c
+
+-ip_push_pending_frames()           发送数据，~/net/ipv4/ip_output.c
+  -ip_send_skb()
+    -ip_local_out()
+      -__ip_local_out()
+        -dst_output()
+#+END_EXAMPLE
+
+* 分片重组
+分片重组是L3 IP层的重要任务之一
+
+#+BEGINE_EXAMPLE
+-ip_defrag()                            分片重组入口，~/net/ipv4/ip_fragment.c
+#+END_EXAMPLE
+
+#+BEGIN_EXAMPLE
+-ip_fragment()                          IP分段入口，~/net/ipv4/ip_output.c
+#+END_EXAMPLE
+
+* RAW socket
+通过建立此类插口，用户程序可跳过内核的L4,甚至L3层，为定制化通信协议提供
+了便利。
+
+#+BEGIN_EXAMPLE
+-raw_local_deliver()                       RAW报文上送入口，~/net/ipv4/raw.c
+  -raw_v4_input()
+    -raw_rcv()
+#+END_EXAMPLE
+
+* 邻居子系统
+如果一台主机和你的计算机连接在同一LAN上，也就是说你和这台主机通过一个共
+享介质相连或点对点直接相连，那么它就是你的邻居(neighbor)
+
+不是邻居的主机间的通信必须通过网关或路由器
+
+需要邻居子系统的根源：网络体系的层次描述(邻居间交互数据可通过多种二层介
+质，而三层不需要关心使用哪种物理介质，因此需要L3地址)和共享介质的存在(
+任意主机发出的任何帧，都会被直接连接到该介质的所有主机收到，因此需要L2
+地址)；而邻居系统完成L3到L2地址的转换
+
+#+BEGIN_EXAMPLE
+-dst_neigh_output()                      发送入口，~/include/net/dst.h
+  -struct neighbour->output()
+    -neigh_resolve_output()              IPv4对应的arp邻居子系统，~/net/core/neighbour.c
+      -neigh_event_send()                请求arp???
+      -dev_hard_header()                 构建L2???
+      -dev_queue_xmit()                  发送
+#+END_EXAMPLE
+
+** 免费ARP
+主要用于主动性网络变更，应用场景
+ - L2地址发生变化
+ - 重复地址探测
+ - 虚拟IP迁移
 
 * socket()
 应用程序原型， =int socket(int domain, int type, int protocol);= ，建立

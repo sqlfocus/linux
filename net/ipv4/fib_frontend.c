@@ -1212,10 +1212,10 @@ static int __net_init ip_fib_net_init(struct net *net)
 	size = max_t(size_t, size, L1_CACHE_BYTES);
 
 	net->ipv4.fib_table_hash = kzalloc(size, GFP_KERNEL);
-	if (!net->ipv4.fib_table_hash)
+	if (!net->ipv4.fib_table_hash)      /* 为网络空间分配路由表数组 */
 		return -ENOMEM;
 
-	err = fib4_rules_init(net);
+	err = fib4_rules_init(net);         /* */
 	if (err < 0)
 		goto fail;
 	return 0;
@@ -1253,6 +1253,7 @@ static void ip_fib_net_exit(struct net *net)
 	kfree(net->ipv4.fib_table_hash);
 }
 
+/* fib子系统初始化 */
 static int __net_init fib_net_init(struct net *net)
 {
 	int error;
@@ -1297,7 +1298,9 @@ void __init ip_fib_init(void)
 	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, NULL, NULL);
 	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);
 
+    /* 注册FIB子系统 */
 	register_pernet_subsys(&fib_net_ops);
+    
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 

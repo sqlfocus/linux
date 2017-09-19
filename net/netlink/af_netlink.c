@@ -72,14 +72,14 @@
 
 struct listeners {
 	struct rcu_head		rcu;
-	unsigned long		masks[0];
+	unsigned long		masks[0];    /* 组播bit位掩码 */
 };
 
 /* state bits */
 #define NETLINK_S_CONGESTED		0x0
 
 /* flags */
-#define NETLINK_F_KERNEL_SOCKET		0x1
+#define NETLINK_F_KERNEL_SOCKET		0x1       /* 内核netlink监听插口 */
 #define NETLINK_F_RECV_PKTINFO		0x2
 #define NETLINK_F_BROADCAST_SEND_ERROR	0x4
 #define NETLINK_F_RECV_NO_ENOBUFS	0x8
@@ -91,6 +91,8 @@ static inline int netlink_is_kernel(struct sock *sk)
 	return nlk_sk(sk)->flags & NETLINK_F_KERNEL_SOCKET;
 }
 
+/* netlink支持的协议(如 NETLINK_NETFILTER)信息表; 除 NETLINK_USERSOCK 外，
+   通过 netlink_kernel_create() 注册 */
 struct netlink_table *nl_table __read_mostly;
 EXPORT_SYMBOL_GPL(nl_table);
 
@@ -109,12 +111,13 @@ static void netlink_skb_destructor(struct sk_buff *skb);
  */
 DEFINE_RWLOCK(nl_table_lock);
 EXPORT_SYMBOL_GPL(nl_table_lock);
-static atomic_t nl_table_users = ATOMIC_INIT(0);
+static atomic_t nl_table_users = ATOMIC_INIT(0);    /* 用户总数 */
 
 #define nl_deref_protected(X) rcu_dereference_protected(X, lockdep_is_held(&nl_table_lock));
 
 static ATOMIC_NOTIFIER_HEAD(netlink_chain);
 
+/* */
 static DEFINE_SPINLOCK(netlink_tap_lock);
 static struct list_head netlink_tap_all __read_mostly;
 
@@ -463,6 +466,7 @@ static struct sock *netlink_lookup(struct net *net, int protocol, u32 portid)
 	return sk;
 }
 
+/* netlink插口层(struct socket->ops)操控集合 */
 static const struct proto_ops netlink_ops;
 
 static void
@@ -489,6 +493,7 @@ netlink_update_listeners(struct sock *sk)
 	 * makes sure updates are visible before bind or setsockopt return. */
 }
 
+/* netlink监听插口插入监听表, nl_table[], struct netlink_table */
 static int netlink_insert(struct sock *sk, u32 portid)
 {
 	struct netlink_table *table = &nl_table[sk->sk_protocol];
@@ -505,10 +510,10 @@ static int netlink_insert(struct sock *sk, u32 portid)
 	    unlikely(atomic_read(&table->hash.nelems) >= UINT_MAX))
 		goto err;
 
-	nlk_sk(sk)->portid = portid;
-	sock_hold(sk);
+	nlk_sk(sk)->portid = portid;       /* 设定监听端口信息，内核默认为0; */
+	sock_hold(sk);                     /* 因此每一种协议仅能有单一的监听端口 */
 
-	err = __netlink_insert(table, sk);
+	err = __netlink_insert(table, sk); /* 插入监听表, nl_table[] */
 	if (err) {
 		/* In case the hashtable backend returns with -EBUSY
 		 * from here, it must not escape to the caller.
@@ -551,12 +556,14 @@ static void netlink_remove(struct sock *sk)
 	netlink_table_ungrab();
 }
 
+/* netlink协议层(struct sock->sk_prot)操控集合 */
 static struct proto netlink_proto = {
 	.name	  = "NETLINK",
 	.owner	  = THIS_MODULE,
 	.obj_size = sizeof(struct netlink_sock),
 };
 
+/* @param kern: 是否为内核内创建 */
 static int __netlink_create(struct net *net, struct socket *sock,
 			    struct mutex *cb_mutex, int protocol,
 			    int kern)
@@ -564,13 +571,13 @@ static int __netlink_create(struct net *net, struct socket *sock,
 	struct sock *sk;
 	struct netlink_sock *nlk;
 
-	sock->ops = &netlink_ops;
+	sock->ops = &netlink_ops;           /* BSD插口层操控函数集合 */
 
 	sk = sk_alloc(net, PF_NETLINK, GFP_KERNEL, &netlink_proto, kern);
-	if (!sk)
+	if (!sk)                            /* 分配struct sock */
 		return -ENOMEM;
 
-	sock_init_data(sock, sk);
+	sock_init_data(sock, sk);           /* 关联struct socket和struct sock */
 
 	nlk = nlk_sk(sk);
 	if (cb_mutex) {
@@ -582,10 +589,11 @@ static int __netlink_create(struct net *net, struct socket *sock,
 	init_waitqueue_head(&nlk->wait);
 
 	sk->sk_destruct = netlink_sock_destruct;
-	sk->sk_protocol = protocol;
+	sk->sk_protocol = protocol;         /* 设置netlink支持的协议类型，如 NETLINK_NETFILTER */
 	return 0;
 }
 
+/* 创建netlink插口层信息结构，struct socket */
 static int netlink_create(struct net *net, struct socket *sock, int protocol,
 			  int kern)
 {
@@ -596,15 +604,18 @@ static int netlink_create(struct net *net, struct socket *sock, int protocol,
 	void (*unbind)(struct net *net, int group);
 	int err = 0;
 
+    /* 设置初始状态 */
 	sock->state = SS_UNCONNECTED;
 
+    /* 参数检测 */
 	if (sock->type != SOCK_RAW && sock->type != SOCK_DGRAM)
 		return -ESOCKTNOSUPPORT;
 
 	if (protocol < 0 || protocol >= MAX_LINKS)
 		return -EPROTONOSUPPORT;
 
-	netlink_lock_table();
+    /* 加载协议实现模块儿 */
+	netlink_lock_table();     /* 增加用户数 */
 #ifdef CONFIG_MODULES
 	if (!nl_table[protocol].registered) {
 		netlink_unlock_table();
@@ -625,14 +636,17 @@ static int netlink_create(struct net *net, struct socket *sock, int protocol,
 	if (err < 0)
 		goto out;
 
+    /* 创建协议层信息结构struct sock，并初始化 */
 	err = __netlink_create(net, sock, cb_mutex, protocol, kern);
 	if (err < 0)
 		goto out_module;
 
+    /* 增加引用计数 */
 	local_bh_disable();
 	sock_prot_inuse_add(net, &netlink_proto, 1);
 	local_bh_enable();
 
+    /* 设置插口的回调函数 */
 	nlk = nlk_sk(sock->sk);
 	nlk->module = module;
 	nlk->netlink_bind = bind;
@@ -897,6 +911,7 @@ static void netlink_undo_bind(int group, long unsigned int groups,
 			nlk->netlink_unbind(sock_net(sk), undo + 1);
 }
 
+/* 用户态bind()调用的netlink函数 */
 static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 			int addr_len)
 {
@@ -910,11 +925,10 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 
 	if (addr_len < sizeof(struct sockaddr_nl))
 		return -EINVAL;
-
 	if (nladdr->nl_family != AF_NETLINK)
 		return -EINVAL;
 
-	/* Only superuser is allowed to listen multicasts */
+	/* 分配多播位掩码，Only superuser is allowed to listen multicasts */
 	if (groups) {
 		if (!netlink_allowed(sock, NL_CFG_F_NONROOT_RECV))
 			return -EPERM;
@@ -923,6 +937,7 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 			return err;
 	}
 
+    /* 绑定多播组 */
 	bound = nlk->bound;
 	if (bound) {
 		/* Ensure nlk->portid is up-to-date. */
@@ -931,7 +946,6 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 		if (nladdr->nl_pid != nlk->portid)
 			return -EINVAL;
 	}
-
 	if (nlk->netlink_bind && groups) {
 		int group;
 
@@ -948,11 +962,11 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 
 	/* No need for barriers here as we return to user-space without
 	 * using any of the bound attributes.
-	 */
+	 *//* 用户态插口，加入插口监听表 nl_table[] */
 	if (!bound) {
 		err = nladdr->nl_pid ?
 			netlink_insert(sk, nladdr->nl_pid) :
-			netlink_autobind(sock);
+			netlink_autobind(sock);     /* 默认使用进程ID，当作用户态的监听口 */
 		if (err) {
 			netlink_undo_bind(nlk->ngroups, groups, sk);
 			return err;
@@ -962,6 +976,7 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 	if (!groups && (nlk->groups == NULL || !(u32)nlk->groups[0]))
 		return 0;
 
+    /* 加入多播表, struct netlink_table->mc_list */
 	netlink_table_grab();
 	netlink_update_subscriptions(sk, nlk->subscriptions +
 					 hweight32(groups) -
@@ -1157,8 +1172,9 @@ static int __netlink_sendskb(struct sock *sk, struct sk_buff *skb)
 
 	netlink_deliver_tap(skb);
 
+    /* 放入接收队列，并唤醒等待插口 */
 	skb_queue_tail(&sk->sk_receive_queue, skb);
-	sk->sk_data_ready(sk);
+	sk->sk_data_ready(sk);     /* 调用 sock_def_readable(), 唤醒等待进程 */
 	return len;
 }
 
@@ -1199,6 +1215,7 @@ static struct sk_buff *netlink_trim(struct sk_buff *skb, gfp_t allocation)
 	return skb;
 }
 
+/* 数据包发往内核的netlink插口 */
 static int netlink_unicast_kernel(struct sock *sk, struct sk_buff *skb,
 				  struct sock *ssk)
 {
@@ -1211,7 +1228,7 @@ static int netlink_unicast_kernel(struct sock *sk, struct sk_buff *skb,
 		netlink_skb_set_owner_r(skb, sk);
 		NETLINK_CB(skb).sk = ssk;
 		netlink_deliver_tap_kernel(sk, ssk, skb);
-		nlk->netlink_rcv(skb);
+		nlk->netlink_rcv(skb);    /* 调用设置的接收函数 */
 		consume_skb(skb);
 	} else {
 		kfree_skb(skb);
@@ -1220,6 +1237,7 @@ static int netlink_unicast_kernel(struct sock *sk, struct sk_buff *skb,
 	return ret;
 }
 
+/* netlink单播 */
 int netlink_unicast(struct sock *ssk, struct sk_buff *skb,
 		    u32 portid, int nonblock)
 {
@@ -1231,14 +1249,17 @@ int netlink_unicast(struct sock *ssk, struct sk_buff *skb,
 
 	timeo = sock_sndtimeo(ssk, nonblock);
 retry:
+    /* 查找目的netlink插口 */
 	sk = netlink_getsockbyportid(ssk, portid);
 	if (IS_ERR(sk)) {
 		kfree_skb(skb);
 		return PTR_ERR(sk);
 	}
+    /* 发往内核 */
 	if (netlink_is_kernel(sk))
 		return netlink_unicast_kernel(sk, skb, ssk);
 
+    /* 运行ebpf过滤报文 */
 	if (sk_filter(sk, skb)) {
 		err = skb->len;
 		kfree_skb(skb);
@@ -1252,6 +1273,7 @@ retry:
 	if (err)
 		return err;
 
+    /* 发往用户态netlink插口 */
 	return netlink_sendskb(sk, skb);
 }
 EXPORT_SYMBOL(netlink_unicast);
@@ -1409,6 +1431,7 @@ int netlink_broadcast_filtered(struct sock *ssk, struct sk_buff *skb, u32 portid
 
 	netlink_lock_table();
 
+    /* 遍历用户态插口多播列表，广播 */
 	sk_for_each_bound(sk, &nl_table[ssk->sk_protocol].mc_list)
 		do_one_broadcast(sk, &info);
 
@@ -1431,6 +1454,7 @@ int netlink_broadcast_filtered(struct sock *ssk, struct sk_buff *skb, u32 portid
 }
 EXPORT_SYMBOL(netlink_broadcast_filtered);
 
+/* netlink广播 */
 int netlink_broadcast(struct sock *ssk, struct sk_buff *skb, u32 portid,
 		      u32 group, gfp_t allocation)
 {
@@ -1710,6 +1734,7 @@ static void netlink_cmsg_listen_all_nsid(struct sock *sk, struct msghdr *msg,
 		 &NETLINK_CB(skb).nsid);
 }
 
+/* sendmsg()对应的netlink插口调用 */
 static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 {
 	struct sock *sk = sock->sk;
@@ -1779,6 +1804,7 @@ static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 		goto out;
 	}
 
+    /* 发送报文，广播或单播 */
 	if (dst_group) {
 		atomic_inc(&skb->users);
 		netlink_broadcast(sk, skb, dst_portid, dst_group, GFP_KERNEL);
@@ -1889,7 +1915,12 @@ static void netlink_data_ready(struct sock *sk)
  *	complete set of kernel non-blocking support for message
  *	queueing.
  */
-
+/*
+ * @param net: 网络命名空间
+ * @param unit: netlink协议，如NETLINK_NETFILTER
+ * @param module: 协议实现模块儿
+ * @param cfg: 协议操控信息
+ */
 struct sock *
 __netlink_kernel_create(struct net *net, int unit, struct module *module,
 			struct netlink_kernel_cfg *cfg)
@@ -1906,33 +1937,38 @@ __netlink_kernel_create(struct net *net, int unit, struct module *module,
 	if (unit < 0 || unit >= MAX_LINKS)
 		return NULL;
 
+    /* 轻量级创建插口 */
 	if (sock_create_lite(PF_NETLINK, SOCK_DGRAM, unit, &sock))
 		return NULL;
 
+    /* 创建协议层信息结构struct sock，并初始化 */
 	if (__netlink_create(net, sock, cb_mutex, unit, 1) < 0)
 		goto out_sock_release_nosk;
 
 	sk = sock->sk;
 
+    /* 分配内存，存放监听组播位 */
 	if (!cfg || cfg->groups < 32)
 		groups = 32;
 	else
 		groups = cfg->groups;
-
 	listeners = kzalloc(sizeof(*listeners) + NLGRPSZ(groups), GFP_KERNEL);
 	if (!listeners)
 		goto out_sock_release;
 
+    /* 设定消息接收处理回调 */
 	sk->sk_data_ready = netlink_data_ready;
 	if (cfg && cfg->input)
 		nlk_sk(sk)->netlink_rcv = cfg->input;
 
+    /* 加入netlink监控hash表, nl_table[], struct netlink_table */
 	if (netlink_insert(sk, 0))
 		goto out_sock_release;
 
 	nlk = nlk_sk(sk);
 	nlk->flags |= NETLINK_F_KERNEL_SOCKET;
 
+    /* 修正 nl_table[](struct netlink_table) 注册信息 */
 	netlink_table_grab();
 	if (!nl_table[unit].registered) {
 		nl_table[unit].groups = groups;
@@ -2270,19 +2306,21 @@ int netlink_rcv_skb(struct sk_buff *skb, int (*cb)(struct sk_buff *,
 		if (nlh->nlmsg_len < NLMSG_HDRLEN || skb->len < nlh->nlmsg_len)
 			return 0;
 
-		/* Only requests are handled by the kernel */
+		/* 内核仅处理请求消息，Only requests are handled by the kernel */
 		if (!(nlh->nlmsg_flags & NLM_F_REQUEST))
 			goto ack;
 
-		/* Skip control messages */
+		/* 跳过控制消息，Skip control messages */
 		if (nlh->nlmsg_type < NLMSG_MIN_TYPE)
 			goto ack;
 
+        /* 处理消息头, rtnetlink_rcv_msg() */
 		err = cb(skb, nlh);
 		if (err == -EINTR)
 			goto skip;
 
 ack:
+        /* 出错或发送端要求应答 */
 		if (nlh->nlmsg_flags & NLM_F_ACK || err)
 			netlink_ack(skb, nlh, err);
 
@@ -2497,6 +2535,7 @@ int netlink_unregister_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(netlink_unregister_notifier);
 
+/* netlink插口层(struct socket->ops)操控集合 */
 static const struct proto_ops netlink_ops = {
 	.family =	PF_NETLINK,
 	.owner =	THIS_MODULE,
@@ -2560,6 +2599,7 @@ static void __init netlink_add_usersock_entry(void)
 	netlink_table_ungrab();
 }
 
+/* 网络命名空间创建、销毁时，调用的netlink回调，类似于消息通知 */
 static struct pernet_operations __net_initdata netlink_net_ops = {
 	.init = netlink_net_init,
 	.exit = netlink_net_exit,
@@ -2582,20 +2622,22 @@ static const struct rhashtable_params netlink_rhashtable_params = {
 	.automatic_shrinking = true,
 };
 
+/* netlink模块儿初始化 */
 static int __init netlink_proto_init(void)
 {
 	int i;
+    
+    /* 注册到 proto_list，四层协议链表，对等的结构如 tcp_proto */
 	int err = proto_register(&netlink_proto, 0);
-
 	if (err != 0)
 		goto out;
 
 	BUILD_BUG_ON(sizeof(struct netlink_skb_parms) > FIELD_SIZEOF(struct sk_buff, cb));
 
+    /* 分配内存，存储netlink支持的协议信息结构，如 NETLINK_NETFILTER */
 	nl_table = kcalloc(MAX_LINKS, sizeof(*nl_table), GFP_KERNEL);
 	if (!nl_table)
 		goto panic;
-
 	for (i = 0; i < MAX_LINKS; i++) {
 		if (rhashtable_init(&nl_table[i].hash,
 				    &netlink_rhashtable_params) < 0) {
@@ -2606,11 +2648,16 @@ static int __init netlink_proto_init(void)
 		}
 	}
 
+    /* */
 	INIT_LIST_HEAD(&netlink_tap_all);
 
+    /* 注册NETLINK_USERSOCK协议类型 */
 	netlink_add_usersock_entry();
 
+    /* 注册到 net_families[], 内核支持的协议族操控集合 */
 	sock_register(&netlink_family_ops);
+
+    /* 注册网络命名空间创建、销毁的回调，以使得netlink能够注意到网络命名空间 */
 	register_pernet_subsys(&netlink_net_ops);
 	/* The netlink device handler may be needed early. */
 	rtnetlink_init();

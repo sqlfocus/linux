@@ -23,7 +23,7 @@ struct bpf_map_def SEC("maps") percpu_hash_map = {
 	.type = BPF_MAP_TYPE_PERCPU_HASH,
 	.key_size = sizeof(u32),
 	.value_size = sizeof(long),
-	.max_entries = MAX_ENTRIES,
+	.max_entries = MAX_ENTRIES,            /* 未指定标识，预先分配内存 */
 };
 
 struct bpf_map_def SEC("maps") hash_map_alloc = {
@@ -31,7 +31,7 @@ struct bpf_map_def SEC("maps") hash_map_alloc = {
 	.key_size = sizeof(u32),
 	.value_size = sizeof(long),
 	.max_entries = MAX_ENTRIES,
-	.map_flags = BPF_F_NO_PREALLOC,
+	.map_flags = BPF_F_NO_PREALLOC,        /* 指定标识，不预先分配内存 */
 };
 
 struct bpf_map_def SEC("maps") percpu_hash_map_alloc = {
@@ -42,7 +42,7 @@ struct bpf_map_def SEC("maps") percpu_hash_map_alloc = {
 	.map_flags = BPF_F_NO_PREALLOC,
 };
 
-SEC("kprobe/sys_getuid")
+SEC("kprobe/sys_getuid")                   /* kprobe探针getuid系统调用 */
 int stress_hmap(struct pt_regs *ctx)
 {
 	u32 key = bpf_get_current_pid_tgid();

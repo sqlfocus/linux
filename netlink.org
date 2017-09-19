@@ -1,0 +1,242 @@
+#+TITLE: NETLINK简介
+#+AUTHOR: sqlfocus
+
+
+
+本文档介绍linux netlink，为更深入理解XDP铺垫！
+
+
+* 简介
+考虑到内核开发、维护的复杂度，仅仅最本质、最性能相关的代码才放置到内核；
+其他的诸如GUI、控制代码，则放置到用户态实现。代码在内核态、用户态之间拆
+分在Linux很常见，那拆分后它们之间是如何通信的？答案是各种各样的IPC方法，
+如system call、ioctl、proc文件系统、netlink插口等。
+
+netlink插口是内核态特定API、用户态进程标准socket之间传输信息的IPC，提供
+了全双工链路；使用协议族AF_NETLINK，并在头文件 ~include/linux/netlink.h~
+提供支持的协议类型。
+
+为何选择netlink插口，而不是其他方式？为新特性添加系统调用、ioctls、proc
+文件等并不简单，而且极有可能污染内核、破坏系统的稳定性；相比，netlink插
+口比较简单，仅需要定义一个协议类型常量，添加到 ~netlink.h~ 文件，内核模
+块儿和应用程序就可以通过socket类型的API通信了。
+
+netlink通信是异步的，类似于其他类型的socket，提供了缓存队列以平滑突发消
+息；而系统调用则是同步的，因此大、长参数的系统调用会影响调度粒度。
+
+实现系统调用的代码必须在编译期静态连接到内核，因此不适合封装成模块儿，但
+大多数驱动程序是以模块儿形式存在的；利用netlink插口，则可以解决这些问题。
+
+netlink插口支持多播，此特性比起系统调用、ioctl要先进很多；对于内核向用户
+态程序广播消息，提供了近乎完美的解决方案。
+
+大部份的IPC方式只能由用户态程序发起，如何知晓内核状态变更，只能采取轮询
+的方式；netlink允许内核主动发起通知，即双工工作方式。
+
+netlink采用类似于socket的接口方式，学习难度更低！
+
+* 示例代码
+ - 编译用户态程序
+   : gcc netlink_test_user.c -o netlink_test_user
+ - 编译内核态程序
+   : make
+ - 加载内核模块儿
+   : sudo insmod netlink_test_kernel
+   : modinfo netlink_test_kernel.ko
+   : lsmod | grep netlink_test_kernel
+ - 运行用户态程序
+   : ./netlink_test_user
+ - 查看系统输出
+   : cat /var/log/syslog
+ - 卸载内核模块儿
+   : sudo rmmod netlink_test_kernel
+
+ #+BEGIN_EXAMPLE
+ 文件：netlink_test_user.c
+ 编译：gcc netlink_test_user.c -o netlink_test_user
+
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <linux/netlink.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <string.h>
+
+ #define NETLINK_NITRO 17
+ #define MAX_PAYLOAD 2048
+
+ int main()
+ {
+    struct sockaddr_nl s_nladdr, d_nladdr;
+    struct msghdr msg ;
+    struct nlmsghdr *nlh=NULL ;
+    struct iovec iov;
+    int fd = socket(AF_NETLINK ,SOCK_RAW , NETLINK_NITRO);
+
+    /* source address */
+    memset(&s_nladdr, 0 ,sizeof(s_nladdr));
+    s_nladdr.nl_family= AF_NETLINK ;
+    s_nladdr.nl_pad=0;
+    s_nladdr.nl_pid = getpid();
+    bind(fd, (struct sockaddr*)&s_nladdr, sizeof(s_nladdr));
+
+    /* destination address */
+    memset(&d_nladdr, 0 ,sizeof(d_nladdr));
+    d_nladdr.nl_family= AF_NETLINK ;
+    d_nladdr.nl_pad=0;
+    d_nladdr.nl_pid = 0; /* destined to kernel */
+
+    /* Fill the netlink message header */
+    nlh = (struct nlmsghdr *)malloc(100);
+    memset(nlh , 0 , 100);
+    strcpy(NLMSG_DATA(nlh), "Mr. Kernel, Are you ready ?" );
+    nlh->nlmsg_len =100;
+    nlh->nlmsg_pid = getpid();
+    nlh->nlmsg_flags = 1;
+    nlh->nlmsg_type = 0;
+
+    /* iov structure */
+    iov.iov_base = (void *)nlh;
+    iov.iov_len = nlh->nlmsg_len;
+
+    /* msg */
+    memset(&msg,0,sizeof(msg));
+    msg.msg_name = (void *) &d_nladdr ;
+    msg.msg_namelen=sizeof(d_nladdr);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    sendmsg(fd, &msg, 0);
+
+    close(fd);
+    return (EXIT_SUCCESS);
+ }
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 文件：netlink_test_kernel.c
+ 编译(见后续Makefile)：make
+
+ #include <linux/init.h>
+ #include <linux/module.h>
+ #include <linux/kernel.h>
+ #include <linux/sched.h>
+ #include <linux/netlink.h>
+ #include <net/sock.h>
+ #include <net/net_namespace.h>
+
+ #define NETLINK_NITRO 17
+
+ MODULE_LICENSE("GPL");
+
+ static struct sock *nl_sk = NULL;
+
+ static void nl_data_ready (struct sk_buff *skb)
+ {
+    struct nlmsghdr *nlh = NULL;
+    if(skb == NULL) {
+        printk("skb is NULL \n");
+        return ;
+    }
+    nlh = (struct nlmsghdr *)skb->data;
+    printk(KERN_INFO "%s: received netlink message payload: %s\n", __FUNCTION__, (char*)NLMSG_DATA(nlh));
+ }
+
+ static void netlink_test(void)
+ {
+    struct netlink_kernel_cfg cfg = {
+	.input	= nl_data_ready,
+    };
+    nl_sk = netlink_kernel_create(&init_net, NETLINK_NITRO, &cfg);
+ }
+
+ static int __init my_module_init(void)
+ {
+    printk(KERN_INFO "Initializing Netlink Socket");
+    netlink_test();
+    return 0;
+ }
+
+ static void __exit my_module_exit(void)
+ {
+    printk(KERN_INFO "Goodbye");
+    sock_release(nl_sk->sk_socket);
+ }
+
+ module_init(my_module_init);
+ module_exit(my_module_exit);
+ #+END_EXAMPLE
+
+ #+BEGIN_EXAMPLE
+ 文件：Makefile
+ 
+ obj-m := netlink_test_kernel.o            #要生成的模块名     
+ KDIR := /lib/modules/`uname -r`/build   
+ PWD := $(shell pwd)
+
+ default:
+         make -C $(KDIR) M=$(PWD) modules  #M指定外部代码目录，-C转移工作目录到指定位置
+
+ clean:
+         rm -rf *.o .cmd *.ko *.mod.c .tmp_versions *~ *.order *.symvers
+ #+END_EXAMPLE
+
+* 代码摘录
+** netlink_proto_init()
+文件：~/net/netlink/af_netlink.c
+作用：内核初始化过程中，初始化netlink模块
+ - proto_register()
+   : 注册四层协议netlink_proto到proto_list
+ - sock_register()
+   : 注册插口操作集合，netlink_family_ops
+ - register_pernet_subsys()
+   : 注册网络命名空间变更通知，netlink_net_ops
+ - rtnetlink_init()
+   : 前期初始化
+
+** socket()
+文件：~/net/socket.c
+作用：用户态创建netlink插口
+ - sock_create()          :: 创建插口
+   - struct net_proto_family->create()
+   -->netlink_create()
+ - sock_map_fd()          :: 建立文件描述符，构建对应关系
+
+** bind()
+文件：~/net/socket.c
+作用：用户态绑定源地址
+ - sockfd_lookup_light()  :: 查找文件描述符对应的插口
+ - struct socket->ops->bind()
+ -->netlink_bind()        :: 绑定
+
+** sendmsg()
+文件：~/net/compat.c
+作用：向内核发送消息
+ - ___sys_sendmsg()
+   - sock_sendmsg()
+     - struct socket->ops->sendmsg()
+     -->netlink_sendmsg()            :: ~/net/netlink/af_netlink.c
+       - netlink_broadcast()         :: 广播
+       - netlink_unicast()           :: 单播
+         - struct netlink_sock->netlink_rcv()    :: 发往内核
+         - skb_queue_tail()                      :: 发往用户态
+
+** netlink_kernel_create()
+文件：~/include/linux/netlink.h
+作用：在模块儿中调用，以支持具体的netlink协议
+ - __netlink_kernel_create()
+
+* 参考
+ - ~/include/uapi/linux/netlink.h
+ - ~/Documentation/networking/generic_netlink.txt
+ - [[http://www.linuxjournal.com/article/7356][Why and How to Use Netlink Socket]]
+ - [[http://blog.csdn.net/zcabcd123/article/details/8275891][netlink---Linux下基于socket的内核和上层通信机制]]
+ - [[http://www.infradead.org/~tgr/libnl/][libnl]]
+
+
+
+
+
+
+
+
+

@@ -31,6 +31,7 @@ EXPORT_SYMBOL_GPL(nf_br_ops);
 static struct lock_class_key bridge_netdev_addr_lock_key;
 
 /* net device transmit always called with BH disabled */
+/* 网桥的发送函数 */
 netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);
@@ -340,7 +341,7 @@ static const struct net_device_ops br_netdev_ops = {
 	.ndo_set_rx_mode	 = br_dev_set_multicast_list,
 	.ndo_change_rx_flags	 = br_dev_change_rx_flags,
 	.ndo_change_mtu		 = br_change_mtu,
-	.ndo_do_ioctl		 = br_dev_ioctl,
+	.ndo_do_ioctl		 = br_dev_ioctl,      /* 网桥的ioctol，如添加/删除接口 */
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_netpoll_setup	 = br_netpoll_setup,
 	.ndo_netpoll_cleanup	 = br_netpoll_cleanup,
@@ -372,6 +373,7 @@ static struct device_type br_type = {
 	.name	= "bridge",
 };
 
+/* 网桥设备初始化 */
 void br_dev_setup(struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);
@@ -379,7 +381,7 @@ void br_dev_setup(struct net_device *dev)
 	eth_hw_addr_random(dev);
 	ether_setup(dev);
 
-	dev->netdev_ops = &br_netdev_ops;
+	dev->netdev_ops = &br_netdev_ops;    /* 操控集合 */
 	dev->destructor = br_dev_free;
 	dev->ethtool_ops = &br_ethtool_ops;
 	SET_NETDEV_DEVTYPE(dev, &br_type);

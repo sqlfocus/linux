@@ -1,0 +1,131 @@
+#+TITLE: linux内核的jump table优化简介
+#+AUTHOR: sqlfocus
+
+
+本文档摘录linux内核的优化技巧，jump label，以期能更加深入理解tracepoint！
+
+* 简介
+内核中充斥着一些判断跳转语句，而判断结果几乎不变；如静态跟踪(tracepoint)，
+正常运行的系统，几乎都是disable的。对这些判断的优化，一直被开发者追崇，直
+到linux2.6.37, “jump label”彻底解决了此问题。
+
+这个技巧需要借助gcc提供的asm goto特性实现。
+
+** asm goto
+asm goto属于gcc的asm拓展，允许囊括的汇编指令跳转到C标签；可跳转的标签范围
+放置在asm goto的第4个尾部拓展标签(GotoLabels section)，并且以逗号分隔。
+
+由于编译器的内部限制，asm goto语句不能设置output尾部拓展: 控制跳转指令不允
+许输出；如果汇编语句修改了任何内容，需要使用"memory"强制优化器刷新寄存器到
+内存，并重新加载。
+
+在汇编语句中引用C跳转标签：前缀‘%l’(lowercase ‘L’)，紧跟标签在GotoLabels列
+表中位置(zero-based)＋input尾部拓展的参数个数。例如，如果asm拥有3个input拓
+展标签，则第一个跳转标签应该用‘%l3’引用。
+
+当然，也可以通过标签名引用，格式为‘%l[c-label-name]’
+
+ #+BEGIN_EXAMPLE
+ int frob(int x)
+ {
+    int y;
+    asm goto ("frob %%r5, %1; jc %l[error]; mov (%2), %%r5"
+                 : : "r"(x), "r"(&y) : "r5", "memory" : error);
+    return y;
+error:
+    return -1;
+ }
+ #+END_EXAMPLE
+
+** jump table
+典型的静态跟踪点，去除掉预处理器等因素后，大体执行流程如下：
+ #+BEGIN_EXAMPLE
+ static inline trace_foo(args)
+ {
+   if (unlikely(trace_foo_enabled))
+       goto do_trace;
+   return;
+do_trace:
+   /* Actually do tracing stuff */
+ }
+ #+END_EXAMPLE
+单个判断语句的代价几乎为0,但随着内核中静态跟踪点的数量不断增大，每个判断
+都需要从内存获取值，增大了cache的压力，损害了性能。
+
+即使有了unlikey优化，既然有if判断，cpu的分支预测就有可能失败，再者do_trace
+在代码上离if这么近，即使编译器再聪明，二进制代码的do_trace也不会离前面的
+代码太远的，这样由于局部性原理和cpu的预取机制，do_trace的代码很有可能就被
+预取入了cpu的cache，就算我们从来不打算trace代码也是如此。
+
+我们需要的是如果不开启trace，那么do_trace永远不被预取或者被预测，唯一的办
+法就是去掉if判断，永远不调用goto语句，像下面这样：
+ #+BEGIN_EXAMPLE
+ static inline trace_foo(args)
+ {       
+    return;
+do_trace:
+    /* Actually do tracing stuff */
+ }
+ #+END_EXAMPLE
+
+鉴于静态跟踪点的分支预测结果绝大部分时间不变，因此可以在运行时修改载入内
+存的二进制代码，将if代码段去掉，分支判断的代价缩减为0。linux2.6.37内核引
+入了JUMP_LABEL宏，1)note the location of the test and the key value in a 
+special table；2)simply insert a no-op instruction。
+
+当使能tracepoint时，需调用特殊函数：在jump table中查找key，并替换插入
+的no-op指令为“goto label”，从而使能跟踪代码。
+
+再次关闭时，也需调用特殊函数：恢复“goto label”为no-op。
+
+* 源码摘录
+本节以 ~samples/trace_events/trace-events-sample.h~ 文件为例，摘录其过程
+中用到的jump label函数。
+
+** DEFINE_STATIC_KEY_TRUE
+声明tracepoint对应的jump label结构， ~include/linux/jump_label.h~ ，类似的
+函数族如下：
+  - DEFINE_STATIC_KEY_FALSE()
+  - DEFINE_STATIC_KEY_ARRAY_TRUE(,)
+  - DEFINE_STATIC_KEY_ARRAY_FALSE(,)
+
+** static_branch_likely()
+分支判断函数， ~include/linux/jump_label.h~ , 类似的函数族如下：
+ - static_branch_unlikely()
+ - static_key_true()             :: 已废弃
+ - static_key_false()            :: 已废弃
+
+** static_branch_enable()
+运行时，使能分支判断条件，类似的函数族如下：
+ - static_branch_disable()
+ - static_branch_inc()           :: make more true
+ - static_branch_dec()           :: make more false
+
+** static_key_slow_inc()
+使能tracepoint点，调用流程
+ - register_trace_foo_bar_with_cond()
+  - tracepoint_probe_register_prio()
+   - tracepoint_add_func()                        ~/kernel/tracepoint.c
+    - static_key_slow_inc()                       ~/kernel/jump_label.c
+     - jump_label_update()
+另一个调用流程
+ - static_branch_enable()                         ~/include/linux/jump_label.h
+  - static_key_enable()
+   - static_key_slow_inc()
+
+* 参考
+ - ~/Documentation/static-keys.txt
+ - [[https://lwn.net/Articles/412072/][Jump label]]
+ - "Goto Labels" of <<Using the GNU Compiler Collection>>
+ - [[http://blog.csdn.net/dog250/article/details/6123517][asm goto与JUMP_LABEL]]
+
+
+
+
+
+
+
+
+
+
+

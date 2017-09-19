@@ -8,7 +8,11 @@
       默认情况下，代码放置到text段 */
 #define SEC(NAME) __attribute__((section(NAME), used))
 
-/* helper functions called from eBPF programs written in C */
+/* C语言书写的ebpf程序，需要调用的内核ebpf函数索引；这些索引值
+   定义在~/include/uapi/linux/bpf.h, enum bpf_func_id {}；C被
+   llvm编译后，对于BPF_CALL指令，其imm值即为对应的索引
+
+   helper functions called from eBPF programs written in C */
 static void *(*bpf_map_lookup_elem)(void *map, void *key) =
 	(void *) BPF_FUNC_map_lookup_elem;
 static int (*bpf_map_update_elem)(void *map, void *key, void *value,

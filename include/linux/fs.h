@@ -599,7 +599,7 @@ is_uncached_acl(struct posix_acl *acl)
  * Keep mostly read-only and often accessed (especially for
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
- *//* 此结构描述磁盘文件，包括元数据和内容；当然也包含一些动态内容，这些
+ *//* 描述磁盘文件，包括元数据和内容；当然也包含一些动态内容，这些
       内容不存储在磁盘，被内核动态创建 */
 struct inode {
 	umode_t			i_mode;            /* 文件类型及访问权限 */
@@ -634,7 +634,7 @@ struct inode {
 		const unsigned int i_nlink;
 		unsigned int __i_nlink;
 	};
-	dev_t			i_rdev;           /* 用于设备文件，标识通信的设备 */
+	dev_t			i_rdev;           /* 设备文件，对应设备号；通过iminor/imajor()操控 */
 	loff_t			i_size;           /* 文件大小 */
 	struct timespec		i_atime;      /* 上次文件访问时间 */
 	struct timespec		i_mtime;      /* 上次文件修改时间 */
@@ -702,7 +702,7 @@ struct inode {
 	struct fscrypt_info	*i_crypt_info;
 #endif
 
-	void			*i_private; /* fs or device private pointer */
+	void			*i_private;             /* 私有数据指针，fs or device private pointer */
 };
 
 static inline int inode_unhashed(struct inode *inode)
@@ -884,7 +884,7 @@ struct file {
 		struct rcu_head 	fu_rcuhead;
 	} f_u;
 	struct path		f_path;          /* inode和文件系统信息 */
-	struct inode		*f_inode;	/* cached value */
+	struct inode		*f_inode;	 /* cached value */
 	const struct file_operations	*f_op;   /* 文件操作集 */
 
 	/*
@@ -905,9 +905,8 @@ struct file {
 #ifdef CONFIG_SECURITY
 	void			*f_security;
 #endif
-	/* 对应实际应用的描述结构，如struct socket *sock */
-	void			*private_data;
-
+	void			*private_data;   /* 驱动程序对应的私有数据，跨系统调用时保存状态信息 */
+                                     /* 网络设备：struct socket *sock */
 #ifdef CONFIG_EPOLL
 	/* Used by fs/eventpoll.c to link all the hooks to this file */
 	struct list_head	f_ep_links;         /* 被struct epitem->fllink填充，激活的待监控对象列表 */
@@ -1694,8 +1693,10 @@ struct block_device_operations;
 
 struct iov_iter;
 
+/* 关联驱动程序与具体的设备(通过设备号识别)，以支撑具体的设备行为；
+   驱动程序实现此结构中的接口，外围程序通过调用此结构中的接口操控设备 */
 struct file_operations {
-	struct module *owner;               /* 文件系统做为模块儿载入时才被赋值 */
+	struct module *owner;               /* 拥有该结构的模块儿 */
 	loff_t (*llseek) (struct file *, loff_t, int);
 	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
 	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);

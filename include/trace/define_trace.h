@@ -4,17 +4,25 @@
  * trace file may define:
  *
  * TRACE_SYSTEM defines the system the tracepoint is for
+ *              定义系统跟踪点所在的子系统(group)
  *
  * TRACE_INCLUDE_FILE if the file name is something other than TRACE_SYSTEM.h
  *     This macro may be defined to tell define_trace.h what file to include.
  *     Note, leave off the ".h".
+ *              当头文件名不是TRACE_SYSTEM.h，利用此宏定义头文件名
  *
  * TRACE_INCLUDE_PATH if the path is something other than core kernel include/trace
  *     then this macro can define the path to use. Note, the path is relative to
  *     define_trace.h, not the file including it. Full path names for out of tree
  *     modules must be used.
+ *              定义头文件搜索路径，未指定则默认为内核目录include/trace；注意
+ *              1)此路径相对于define_trace.h，而非定义它的文件；2)如果路径为源
+ *              码树外的模块，则必须为全路径名
  */
 
+/* <TAKECARE!!!>只有定义了此宏，此文件才有意义；
+                一般在某个.c文件，先定义此宏，再引用头文件；
+                其他的.c文件则只引用头文件即可 */
 #ifdef CREATE_TRACE_POINTS
 
 /* Prevent recursion */
@@ -24,7 +32,7 @@
 
 #undef TRACE_EVENT
 #define TRACE_EVENT(name, proto, args, tstruct, assign, print)	\
-	DEFINE_TRACE(name)
+	DEFINE_TRACE(name)            /* 定义tracepoint点 */
 
 #undef TRACE_EVENT_CONDITION
 #define TRACE_EVENT_CONDITION(name, proto, args, cond, tstruct, assign, print) \
@@ -82,18 +90,19 @@
 
 # define TRACE_INCLUDE(system) __TRACE_INCLUDE(system)
 
-/* Let the trace headers be reread */
+/* 定义此宏，允许定义静态跟踪点的头文件被重新读入，Let the trace headers be reread */
 #define TRACE_HEADER_MULTI_READ
-
+/* <TAKECARE!!!>第2次重新加载头文件 */
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
 /* Make all open coded DECLARE_TRACE nops */
 #undef DECLARE_TRACE
 #define DECLARE_TRACE(name, proto, args)
 
+/* 实现事件跟踪及格式化 */
 #ifdef TRACEPOINTS_ENABLED
-#include <trace/trace_events.h>
-#include <trace/perf.h>
+#include <trace/trace_events.h>     /* 第3~9次重新加载头文件 */
+#include <trace/perf.h>             /* 第10次重新加载头文件 */
 #endif
 
 #undef TRACE_EVENT

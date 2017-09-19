@@ -46,16 +46,16 @@
  * chains are slightly more difficult to use because they require special
  * runtime initialization.
  */
-
+/* 通知链元素 */
 struct notifier_block;
 
 typedef	int (*notifier_fn_t)(struct notifier_block *nb,
 			unsigned long action, void *data);
 
 struct notifier_block {
-	notifier_fn_t notifier_call;
+	notifier_fn_t notifier_call;        /* 事件触发的某个模块儿注册的回调函数 */
 	struct notifier_block __rcu *next;
-	int priority;
+	int priority;                       /* 优先级，决定执行顺序，默认0 */
 };
 
 struct atomic_notifier_head {
@@ -156,11 +156,11 @@ extern int srcu_notifier_call_chain(struct srcu_notifier_head *nh,
 extern int __srcu_notifier_call_chain(struct srcu_notifier_head *nh,
 	unsigned long val, void *v, int nr_to_call, int *nr_calls);
 
-#define NOTIFY_DONE		0x0000		/* Don't care */
-#define NOTIFY_OK		0x0001		/* Suits me */
-#define NOTIFY_STOP_MASK	0x8000		/* Don't call further */
+#define NOTIFY_DONE		0x0000		/* 不感兴趣，Don't care */
+#define NOTIFY_OK		0x0001		/* 通知信息被正确处理了，Suits me */
+#define NOTIFY_STOP_MASK	0x8000	/* 不再继续调用剩余通知链函数，Don't call further */
 #define NOTIFY_BAD		(NOTIFY_STOP_MASK|0x0002)
-						/* Bad/Veto action */
+						            /* 出错了，Bad/Veto action */
 /*
  * Clean way to return from the notifier and stop further calls.
  */

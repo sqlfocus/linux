@@ -376,11 +376,13 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	return p;
 }
 
+/* 添加网桥 */
 int br_add_bridge(struct net *net, const char *name)
 {
 	struct net_device *dev;
 	int res;
 
+    /* 分配设备描述结构，并初始化，私有部分为struct net_bridge */
 	dev = alloc_netdev(sizeof(struct net_bridge), name, NET_NAME_UNKNOWN,
 			   br_dev_setup);
 
@@ -480,7 +482,7 @@ netdev_features_t br_features_recompute(struct net_bridge *br,
 	return features;
 }
 
-/* called with RTNL */
+/* 向网桥添加接口，called with RTNL */
 int br_add_if(struct net_bridge *br, struct net_device *dev)
 {
 	struct net_bridge_port *p;
@@ -493,14 +495,14 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	 * the DSA fake ethertype handler to be invoked, so we do not strip off
 	 * the DSA switch tag protocol header and the bridge layer just return
 	 * RX_HANDLER_CONSUMED, stopping RX processing for these frames.
-	 */
+	 *//* 不能添加lookback接口 */
 	if ((dev->flags & IFF_LOOPBACK) ||
 	    dev->type != ARPHRD_ETHER || dev->addr_len != ETH_ALEN ||
 	    !is_valid_ether_addr(dev->dev_addr) ||
 	    netdev_uses_dsa(dev))
 		return -EINVAL;
 
-	/* No bridging of bridges */
+	/* 不能添加网桥，No bridging of bridges */
 	if (dev->netdev_ops->ndo_start_xmit == br_dev_xmit)
 		return -ELOOP;
 
@@ -512,6 +514,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	if (dev->priv_flags & IFF_DONT_BRIDGE)
 		return -EOPNOTSUPP;
 
+    /* 构造网桥端口 */
 	p = new_nbp(br, dev);
 	if (IS_ERR(p))
 		return PTR_ERR(p);
@@ -535,6 +538,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	if (err)
 		goto err3;
 
+    /* 注册的设备，设定接收操控函数，以在主流程中劫持上送流程 */
 	err = netdev_rx_handler_register(dev, br_handle_frame, p);
 	if (err)
 		goto err4;
@@ -581,6 +585,7 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 		br_stp_enable_port(p);
 	spin_unlock_bh(&br->lock);
 
+    /* 利用netlink通知用户端 */
 	br_ifinfo_notify(RTM_NEWLINK, p);
 
 	if (changed_addr)

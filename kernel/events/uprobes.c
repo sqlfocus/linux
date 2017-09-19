@@ -506,7 +506,7 @@ static void consumer_add(struct uprobe *uprobe, struct uprobe_consumer *uc)
 {
 	down_write(&uprobe->consumer_rwsem);
 	uc->next = uprobe->consumers;
-	uprobe->consumers = uc;
+	uprobe->consumers = uc;                /* 注册uprobe对应的处理函数 */
 	up_write(&uprobe->consumer_rwsem);
 }
 

@@ -27,6 +27,7 @@ struct ping_group_range {
 	kgid_t		range[2];
 };
 
+/* IPv4的网络空间 */
 struct netns_ipv4 {
 #ifdef CONFIG_SYSCTL
 	struct ctl_table_header	*forw_hdr;
@@ -46,7 +47,7 @@ struct netns_ipv4 {
 #ifdef CONFIG_IP_ROUTE_CLASSID
 	int			fib_num_tclassid_users;
 #endif
-	struct hlist_head	*fib_table_hash;
+	struct hlist_head	*fib_table_hash;   /* 路由表数组, TABLE_LOCAL_INDEX */
 	bool			fib_offload_disabled;
 	struct sock		*fibnl;
 

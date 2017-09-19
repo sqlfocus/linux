@@ -73,21 +73,22 @@ struct fnhe_hash_bucket {
 #define FNHE_HASH_SIZE		(1 << FNHE_HASH_SHIFT)
 #define FNHE_RECLAIM_DEPTH	5
 
+/* 下一跳 */
 struct fib_nh {
 	struct net_device	*nh_dev;
 	struct hlist_node	nh_hash;
 	struct fib_info		*nh_parent;
 	unsigned int		nh_flags;
-	unsigned char		nh_scope;
+	unsigned char		nh_scope;     /* 路由范围, RT_SCOPE_LINK */
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
 	int			nh_weight;
 	atomic_t		nh_upper_bound;
 #endif
 #ifdef CONFIG_IP_ROUTE_CLASSID
-	__u32			nh_tclassid;
+	__u32			nh_tclassid;      /* 基于路由表的分类器 */
 #endif
 	int			nh_oif;
-	__be32			nh_gw;
+	__be32			nh_gw;            /* 下一跳网关的IP地址 */
 	__be32			nh_saddr;
 	int			nh_saddr_genid;
 	struct rtable __rcu * __percpu *nh_pcpu_rth_output;
@@ -99,7 +100,7 @@ struct fib_nh {
 /*
  * This structure contains data shared by many of routes.
  */
-
+/* 不同路由表项之间共享的数据，节省内存 */
 struct fib_info {
 	struct hlist_node	fib_hash;
 	struct hlist_node	fib_lhash;
@@ -135,6 +136,7 @@ struct fib_rule;
 #endif
 
 struct fib_table;
+/* 路由查找的结果 */
 struct fib_result {
 	unsigned char	prefixlen;
 	unsigned char	nh_sel;
@@ -168,9 +170,9 @@ struct fib_result_nl {
 #endif /* CONFIG_IP_ROUTE_MULTIPATH */
 
 #ifdef CONFIG_IP_MULTIPLE_TABLES
-#define FIB_TABLE_HASHSZ 256
+#define FIB_TABLE_HASHSZ 256       /* 支持策略路由 */
 #else
-#define FIB_TABLE_HASHSZ 2
+#define FIB_TABLE_HASHSZ 2         /* 不支持策略路由 */
 #endif
 
 __be32 fib_info_update_nh_saddr(struct net *net, struct fib_nh *nh);
@@ -225,7 +227,7 @@ int register_fib_notifier(struct notifier_block *nb);
 int unregister_fib_notifier(struct notifier_block *nb);
 int call_fib_notifiers(struct net *net, enum fib_event_type event_type,
 		       struct fib_notifier_info *info);
-
+/* 一张路由表 */
 struct fib_table {
 	struct hlist_node	tb_hlist;
 	u32			tb_id;
@@ -245,7 +247,7 @@ int fib_table_flush(struct net *net, struct fib_table *table);
 struct fib_table *fib_trie_unmerge(struct fib_table *main_tb);
 void fib_free_table(struct fib_table *tb);
 
-#ifndef CONFIG_IP_MULTIPLE_TABLES
+#ifndef CONFIG_IP_MULTIPLE_TABLES    /* 是否支持策略路由 */
 
 #define TABLE_LOCAL_INDEX	(RT_TABLE_LOCAL & (FIB_TABLE_HASHSZ - 1))
 #define TABLE_MAIN_INDEX	(RT_TABLE_MAIN  & (FIB_TABLE_HASHSZ - 1))
@@ -277,7 +279,7 @@ static inline int fib_lookup(struct net *net, const struct flowi4 *flp,
 
 	rcu_read_lock();
 
-	tb = fib_get_table(net, RT_TABLE_MAIN);
+	tb = fib_get_table(net, RT_TABLE_MAIN);   /* 查找main表 */
 	if (tb)
 		err = fib_table_lookup(tb, flp, res, flags | FIB_LOOKUP_NOREF);
 

@@ -623,23 +623,23 @@ int do_vfs_ioctl(struct file *filp, unsigned int fd, unsigned int cmd,
 	struct inode *inode = file_inode(filp);
 
 	switch (cmd) {
-	case FIOCLEX:
+	case FIOCLEX:       /* 设置执行时关闭标志 */
 		set_close_on_exec(fd, 1);
 		break;
 
-	case FIONCLEX:
+	case FIONCLEX:      /* 清除执行时关闭标志 */
 		set_close_on_exec(fd, 0);
 		break;
 
-	case FIONBIO:
+	case FIONBIO:       /* 设置文件非阻塞型IO */
 		error = ioctl_fionbio(filp, argp);
 		break;
 
-	case FIOASYNC:
+	case FIOASYNC:      /* 设置或复位文件异步通知 */
 		error = ioctl_fioasync(fd, filp, argp);
 		break;
 
-	case FIOQSIZE:
+	case FIOQSIZE:      /* 返回文件或目录大小 */
 		if (S_ISDIR(inode->i_mode) || S_ISREG(inode->i_mode) ||
 		    S_ISLNK(inode->i_mode)) {
 			loff_t res = inode_get_bytes(inode);
@@ -682,7 +682,12 @@ int do_vfs_ioctl(struct file *filp, unsigned int fd, unsigned int cmd,
 	return error;
 }
 
-/* ioctl系统调用入口点 */
+/* ioctl系统调用入口点
+   预定义命令分为三组：
+     1) 可用于任何文件
+     2) 只用于普通文件
+     3) 特定于文件系统类型
+ */
 SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	int error;

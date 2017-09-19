@@ -1762,6 +1762,7 @@ static int __init ipv4_offload_init(void)
 
 fs_initcall(ipv4_offload_init);
 
+/* 注册IPv4对应的L3报文类型 */
 static struct packet_type ip_packet_type __read_mostly = {
 	.type = cpu_to_be16(ETH_P_IP),
 	.func = ip_rcv,
@@ -1805,7 +1806,7 @@ static int __init inet_init(void)
 	/*
 	 *	Add all the base protocols.
 	 */
-    /* 注册此协议族支持的协议，包括收报入口等 */
+    /* 注册此协议族支持的L4协议，包括L4的收报文入口、ICMP差错处理等 */
 	if (inet_add_protocol(&icmp_protocol, IPPROTO_ICMP) < 0)
 		pr_crit("%s: Cannot add ICMP protocol\n", __func__);
 	if (inet_add_protocol(&udp_protocol, IPPROTO_UDP) < 0)
@@ -1827,13 +1828,12 @@ static int __init inet_init(void)
 	/*
 	 *	Set the ARP module up
 	 */
-
+    /* 邻居子系统协议初始化 */
 	arp_init();
 
 	/*
 	 *	Set the IP module up
-	 */
-
+	 *//* L3层初始化 */
 	ip_init();
 
 	tcp_v4_init();
@@ -1866,17 +1866,19 @@ static int __init inet_init(void)
 
 	if (init_inet_pernet_ops())
 		pr_crit("%s: Cannot init ipv4 inet pernet ops\n", __func__);
+    
 	/*
 	 *	Initialise per-cpu ipv4 mibs
-	 */
-
+	 *//* 初始化统计量 */
 	if (init_ipv4_mibs())
 		pr_crit("%s: Cannot init ipv4 mibs\n", __func__);
 
 	ipv4_proc_init();
 
+    /* 分片重组系统初始化 */
 	ipfrag_init();
 
+    /* 注册IPv4报文类型 */
 	dev_add_pack(&ip_packet_type);
 
 	ip_tunnel_core_init();

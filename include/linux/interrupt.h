@@ -108,18 +108,18 @@ typedef irqreturn_t (*irq_handler_t)(int, void *);
  * @dir:	pointer to the proc/irq/NN/name entry
  */
 struct irqaction {
-	irq_handler_t		handler;
-	void			*dev_id;
+	irq_handler_t		handler;      /* 中断处理句柄 */
+	void			*dev_id;          /* 关联的设备数据结构，如struct net_device */
 	void __percpu		*percpu_dev_id;
-	struct irqaction	*next;
+	struct irqaction	*next;        /* 共享IRQ的列表 */
 	irq_handler_t		thread_fn;
 	struct task_struct	*thread;
 	struct irqaction	*secondary;
 	unsigned int		irq;
-	unsigned int		flags;
+	unsigned int		flags;        /* 标识，如 IRQF_SHARED */
 	unsigned long		thread_flags;
 	unsigned long		thread_mask;
-	const char		*name;
+	const char		*name;            /* 设备名称，可/proc/interrupts读取已注册的中断设备名称 */
 	struct proc_dir_entry	*dir;
 } ____cacheline_internodealigned_in_smp;
 
@@ -431,16 +431,16 @@ extern bool force_irqthreads;
    tasklets are more than enough. F.e. all serial device BHs et
    al. should be converted to tasklets, not to softirqs.
  */
-
+/* 软中断类型 */
 enum
 {
-	HI_SOFTIRQ=0,
+	HI_SOFTIRQ=0,       /* 可实现高优先级的微任务, 如声卡 */
 	TIMER_SOFTIRQ,
-	NET_TX_SOFTIRQ,
-	NET_RX_SOFTIRQ,
+	NET_TX_SOFTIRQ,     /* 网络收发软中断，它们的优先级决定了即使处于高网 */
+	NET_RX_SOFTIRQ,     /* 络负载的情况下，也能保证高优先级任务具有足够的响应能力 */
 	BLOCK_SOFTIRQ,
 	IRQ_POLL_SOFTIRQ,
-	TASKLET_SOFTIRQ,
+	TASKLET_SOFTIRQ,    /* 可实现低优先级的微任务，如网卡 */
 	SCHED_SOFTIRQ,
 	HRTIMER_SOFTIRQ, /* Unused, but kept as tools rely on the
 			    numbering. Sigh! */
@@ -484,6 +484,7 @@ extern void __raise_softirq_irqoff(unsigned int nr);
 extern void raise_softirq_irqoff(unsigned int nr);
 extern void raise_softirq(unsigned int nr);
 
+/* 处理软中断的内核线程 */
 DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
 
 static inline struct task_struct *this_cpu_ksoftirqd(void)
@@ -494,10 +495,10 @@ static inline struct task_struct *this_cpu_ksoftirqd(void)
 /* Tasklets --- multithreaded analogue of BHs.
 
    Main feature differing them of generic softirqs: tasklet
-   is running only on one CPU simultaneously.
+   is running only on one CPU simultaneously. 与软中断不同：每类微任务只能在一个cpu上单独运行
 
    Main feature differing them of BHs: different tasklets
-   may be run simultaneously on different CPUs.
+   may be run simultaneously on different CPUs. 与BH的不同点：不能类型的微任务可在不同cpu上并发运行
 
    Properties:
    * If tasklet_schedule() is called, then tasklet is guaranteed
@@ -510,14 +511,14 @@ static inline struct task_struct *this_cpu_ksoftirqd(void)
      wrt another tasklets. If client needs some intertask synchronization,
      he makes it with spinlocks.
  */
-
+/* 微任务，类比为多线程的下半部实现 */
 struct tasklet_struct
 {
 	struct tasklet_struct *next;
-	unsigned long state;
-	atomic_t count;
+	unsigned long state;          /* 位图标识，如 TASKLET_STATE_SCHED */
+	atomic_t count;               /* 0, 微任务被关闭；非0, 微任务被开启 */
 	void (*func)(unsigned long);
-	unsigned long data;
+	unsigned long data;           /* ->func()的参数 */
 };
 
 #define DECLARE_TASKLET(name, func, data) \

@@ -21,6 +21,14 @@
  * Notice that TRACE_SYSTEM should be defined outside of #if
  * protection, just like TRACE_INCLUDE_FILE.
  */
+/* TRACE_SYSTEM用来定义网络文档中的group，即ftrace跟踪的子系统；Linux会
+   在/sys/kernel/tracing/events/目录下创建此宏指定名字的子目录
+   
+   另外，此宏会被define_trace.h头文件利用，以得到此头文件的名字；如果头
+   文件名字和此宏定义的不一致，则需要借助TRACE_INCLUDE_FILE宏定义头文件
+   的名字。
+
+   TRACE_SYSTEM、TRACE_INCLUDE_FILE必须放置在#if保护范围外 */
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM sample-trace
 
@@ -29,6 +37,8 @@
  * and underscore), although it may start with numbers. If for some
  * reason it is not, you need to add the following lines:
  */
+/* TRACE_SYSTEM宏指定的名字需要规范化，仅包含字母、数字、下划线；如
+   果因特殊原因需违反此规定，应该利用此宏规范化，如本例中sample-trace==>sample_trace */
 #undef TRACE_SYSTEM_VAR
 #define TRACE_SYSTEM_VAR sample_trace
 /*
@@ -50,13 +60,15 @@
  *
  * serves this purpose.
  */
+/* 不同于普通的头文件，多了TRACE_HEADER_MULTI_READ宏，利用此条件以允许
+   此文件被预处理器重新加载 */
 #if !defined(_TRACE_EVENT_SAMPLE_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_EVENT_SAMPLE_H
 
 /*
  * All trace headers should include tracepoint.h, until we finally
  * make it into a standard header.
- */
+ *//* 所有定义tracepoint的头文件都应该包含此头文件 */
 #include <linux/tracepoint.h>
 
 /*
@@ -187,7 +199,7 @@
  * It is OK to have helper functions in the file, but they need to be protected
  * from being defined more than once. Remember, this file gets included more
  * than once.
- */
+ *//* 此文件可定义帮助函数，不过需要保护，防止多次预处理导致的重新定义 */
 #ifndef __TRACE_EVENT_SAMPLE_HELPER_FUNCTIONS
 #define __TRACE_EVENT_SAMPLE_HELPER_FUNCTIONS
 static inline int __length_of(const int *list)
@@ -220,11 +232,16 @@ enum {
  * be done is to add this macro with the enum within it in the trace
  * header file, and it will be converted in the output.
  */
-
+/* enum在TP_printk()中被使用时，其名非其值被打印出来；此时，用户态的分析
+   程序将会受到影响，利用此帮助函数宏，TP_printk()将会打印其值 */
 TRACE_DEFINE_ENUM(TRACE_SAMPLE_FOO);
 TRACE_DEFINE_ENUM(TRACE_SAMPLE_BAR);
 TRACE_DEFINE_ENUM(TRACE_SAMPLE_ZOO);
 
+/* TRACE_EVENT宏被分为6部分，1)name，跟踪点名；2)proto，跟踪点探针函数原型；
+   3)args，探针函数参数名列表；4)struct，存储到ring buffer的特定数据结构，__entry；
+   5)fast_assign，存储数据到ring buffer的C风格的函数；6)printk，格式化打印struct
+   的方式； */
 TRACE_EVENT(foo_bar,
 
 	TP_PROTO(const char *foo, int bar, const int *lst,
@@ -232,13 +249,13 @@ TRACE_EVENT(foo_bar,
 
 	TP_ARGS(foo, bar, lst, string, mask),
 
-	TP_STRUCT__entry(
+	TP_STRUCT__entry(  
 		__array(	char,	foo,    10		)
 		__field(	int,	bar			)
 		__dynamic_array(int,	list,   __length_of(lst))
 		__string(	str,	string			)
 		__bitmask(	cpus,	num_possible_cpus()	)
-	),
+	),     /* 定义__entry */
 
 	TP_fast_assign(
 		strlcpy(__entry->foo, foo, 10);
@@ -247,7 +264,7 @@ TRACE_EVENT(foo_bar,
 		       __length_of(lst) * sizeof(int));
 		__assign_str(str, string);
 		__assign_bitmask(cpus, cpumask_bits(mask), num_possible_cpus());
-	),
+	),     /* 利用__entry */
 
 	TP_printk("foo %s %d %s %s %s %s (%s)", __entry->foo, __entry->bar,
 
@@ -260,7 +277,7 @@ TRACE_EVENT(foo_bar,
  *    the variable matches one of the values, then it will print the
  *    string in that pair. If non are matched, it returns a string
  *    version of the number (if __entry->bar == 7 then "7" is returned).
- */
+ *//* 可读性变量打印辅助函数 */
 		  __print_symbolic(__entry->bar,
 				   { 0, "zero" },
 				   { TRACE_SAMPLE_FOO, "TWO" },
@@ -278,7 +295,7 @@ TRACE_EVENT(foo_bar,
  *    also printed with delim in between them.
  *    If not all bits are accounted for, then the not found bits will be
  *    added in hex format: 0x506 will show BIT2|BIT4|0x500
- */
+ *//* 可读性位标识打印辅助函数 */
 		  __print_flags(__entry->bar, "|",
 				{ 1, "BIT1" },
 				{ 2, "BIT2" },
@@ -289,7 +306,7 @@ TRACE_EVENT(foo_bar,
  *  __print_array( array, len, element_size )
  *
  *    This prints out the array that is defined by __array in a nice format.
- */
+ *//* 可读性数组打印辅助函数 */
 		  __print_array(__get_dynamic_array(list),
 				__get_dynamic_array_len(list) / sizeof(int),
 				sizeof(int)),
@@ -332,7 +349,10 @@ TRACE_EVENT(foo_bar,
  * That is, the if statement that processes the condition will not be
  * executed unless that traecpoint is enabled. Otherwise it still remains
  * a nop.
- */
+ *//* 此宏类似于TRACE_EVENT，仅仅添加了判断条件，决定tracepoint是否执行；但
+判断条件添加到tracepoint的JUMP_LABEL之后，以优化其执行性能。
+
+即当tracepoint打开跟踪后，才执行判断条件；这样判断条件的执行直接被优化掉了 */
 TRACE_EVENT_CONDITION(foo_bar_with_cond,
 
 	TP_PROTO(const char *foo, int bar),
@@ -376,6 +396,9 @@ void foo_bar_unreg(void);
  * call a function before enabling, or after disabling, just set one
  * function and pass in NULL for the other parameter.
  */
+/* 当tracepoint被使能或禁用时，如果需要调用特定函数，那么可以利用此宏实
+现；基本格式类似于TRACE_EVENT()，不过在尾端添加了两个额外的参数，分别代
+表使能、禁用时需执行的函数；不过，它们可以设置为NULL */
 TRACE_EVENT_FN(foo_bar_with_fn,
 
 	TP_PROTO(const char *foo, int bar),
@@ -423,6 +446,10 @@ TRACE_EVENT_FN(foo_bar_with_fn,
  * DEFINE_EVENT_CONDITION(template, name, proto, args, cond);
  * DEFINE_EVENT_FN(template, name, proto, args, reg, unreg);
  */
+/* 每个DECLARE_EVENT宏创建了一系列的帮助函数，添加tracepoint、创建跟踪目录、
+挂接到perf、赋值ring buffer的结构体、打印输出等等；为了防止代码无限量增长，
+如果多个tracepoint具有相同的格式，仅仅名字不同，则可以使用此宏声明；它使得
+具有相同格式的tracepoint共享一套格式化输出接口！！！ */
 DECLARE_EVENT_CLASS(foo_template,
 
 	TP_PROTO(const char *foo, int bar),
@@ -512,7 +539,7 @@ DEFINE_EVENT_PRINT(foo_template, foo_with_template_print,
  * But then if something defines "samples" or "trace_events" as a macro
  * then we could risk that being converted too, and give us an unexpected
  * result.
- */
+ *//* 定义搜索本文件的路径信息，默认为${linux-src-tree}/include/trace/events目录 */
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_PATH .
@@ -520,4 +547,5 @@ DEFINE_EVENT_PRINT(foo_template, foo_with_template_print,
  * TRACE_INCLUDE_FILE is not needed if the filename and TRACE_SYSTEM are equal
  */
 #define TRACE_INCLUDE_FILE trace-events-sample
-#include <trace/define_trace.h>
+#include <trace/define_trace.h>        /* 此头文件需要定义宏CREATE_TRACE_POINTS才能激活；
+                                          一般在某个.c文件中包含此头文件前定义此宏即可 */

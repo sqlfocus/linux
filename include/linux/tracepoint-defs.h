@@ -21,17 +21,18 @@ struct trace_print_flags_u64 {
 };
 
 struct tracepoint_func {
-	void *func;
-	void *data;
-	int prio;
+	void *func;     /* 探针函数 */
+	void *data;     /* 第一个参数 */
+	int prio;       /* 优先级 */
 };
 
+/* 静态tracepoint节点 */
 struct tracepoint {
-	const char *name;		/* Tracepoint name */
-	struct static_key key;
-	void (*regfunc)(void);
-	void (*unregfunc)(void);
-	struct tracepoint_func __rcu *funcs;
+	const char *name;		/* Tracepoint名称 */
+	struct static_key key;  /* 是否使能？及包含的jump_label */
+	void (*regfunc)(void);  /* 使能tracepoint执行的函数 */
+	void (*unregfunc)(void);/* 禁用tracepoint执行的函数 */
+	struct tracepoint_func __rcu *funcs; /* 注册的tracepoint点函数 */
 };
 
 #endif

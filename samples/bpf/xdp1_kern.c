@@ -51,12 +51,13 @@ int xdp_prog1(struct xdp_md *ctx)
 	u64 nh_off;
 	u32 ipproto;
 
+    /* 查找ethernet头 */
 	nh_off = sizeof(*eth);
 	if (data + nh_off > data_end)
 		return rc;
 
+    /* 查找IP头 */
 	h_proto = eth->h_proto;
-
 	if (h_proto == htons(ETH_P_8021Q) || h_proto == htons(ETH_P_8021AD)) {
 		struct vlan_hdr *vhdr;
 
@@ -76,6 +77,7 @@ int xdp_prog1(struct xdp_md *ctx)
 		h_proto = vhdr->h_vlan_encapsulated_proto;
 	}
 
+    /* 解析IP头，获取传输层协议 */
 	if (h_proto == htons(ETH_P_IP))
 		ipproto = parse_ipv4(data, nh_off, data_end);
 	else if (h_proto == htons(ETH_P_IPV6))
@@ -83,6 +85,7 @@ int xdp_prog1(struct xdp_md *ctx)
 	else
 		ipproto = 0;
 
+    /* 协议报文计数 */
 	value = bpf_map_lookup_elem(&rxcnt, &ipproto);
 	if (value)
 		*value += 1;

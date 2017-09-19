@@ -8,7 +8,7 @@
  * creates the handles for the trace points.
  */
 #define CREATE_TRACE_POINTS
-#include "trace-events-sample.h"
+#include "trace-events-sample.h"            /* 声明并定义静态跟踪点 */
 
 static const char *random_strings[] = {
 	"Mother Goose",
@@ -18,6 +18,7 @@ static const char *random_strings[] = {
 	"One ring to rule them all"
 };
 
+/* 启动模块儿时，加载的内核线程主入口函数 */
 static void simple_thread_func(int cnt)
 {
 	int array[6];
@@ -25,15 +26,15 @@ static void simple_thread_func(int cnt)
 	int i;
 
 	set_current_state(TASK_INTERRUPTIBLE);
-	schedule_timeout(HZ);
+	schedule_timeout(HZ);                   /* 每秒执行一次 */
 
 	for (i = 0; i < len; i++)
-		array[i] = i + 1;
+		array[i] = i + 1;                   /* 根据计数初始化数组 */
 	array[i] = 0;
 
-	/* Silly tracepoints */
+	
 	trace_foo_bar("hello", cnt, array, random_strings[len],
-		      tsk_cpus_allowed(current));
+		      tsk_cpus_allowed(current));  /* 插入tracepoint跟踪点 */
 
 	trace_foo_with_template_simple("HELLO", cnt);
 
@@ -49,7 +50,7 @@ static int simple_thread(void *arg)
 	int cnt = 0;
 
 	while (!kthread_should_stop())
-		simple_thread_func(cnt++);
+		simple_thread_func(cnt++);     /* 内核线程主函数 */
 
 	return 0;
 }
@@ -105,6 +106,7 @@ void foo_bar_unreg(void)
 
 static int __init trace_event_init(void)
 {
+    /* 启动内核线程 */
 	simple_tsk = kthread_run(simple_thread, NULL, "event-sample");
 	if (IS_ERR(simple_tsk))
 		return -1;
@@ -114,7 +116,7 @@ static int __init trace_event_init(void)
 
 static void __exit trace_event_exit(void)
 {
-	kthread_stop(simple_tsk);
+	kthread_stop(simple_tsk);            /* 退出内核线程 */
 	mutex_lock(&thread_mutex);
 	if (simple_tsk_fn)
 		kthread_stop(simple_tsk_fn);
@@ -122,7 +124,9 @@ static void __exit trace_event_exit(void)
 	mutex_unlock(&thread_mutex);
 }
 
+/* 加载模块时调用 */
 module_init(trace_event_init);
+/* 卸载模块时调用 */
 module_exit(trace_event_exit);
 
 MODULE_AUTHOR("Steven Rostedt");

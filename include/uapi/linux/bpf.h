@@ -81,21 +81,21 @@ struct bpf_insn {
 
 /* BPF syscall commands, see bpf(2) man-page for details. */
 enum bpf_cmd {
-	BPF_MAP_CREATE,      /* 创建表项 */
-	BPF_MAP_LOOKUP_ELEM, /* */
-	BPF_MAP_UPDATE_ELEM, /* */
-	BPF_MAP_DELETE_ELEM, /* */
-	BPF_MAP_GET_NEXT_KEY,/* */
-	BPF_PROG_LOAD,       /* */
-	BPF_OBJ_PIN,         /* */
-	BPF_OBJ_GET,         /* */
+	BPF_MAP_CREATE,      /* 共享表项相关操作 */
+	BPF_MAP_LOOKUP_ELEM,
+	BPF_MAP_UPDATE_ELEM,
+	BPF_MAP_DELETE_ELEM,
+	BPF_MAP_GET_NEXT_KEY,
+	BPF_PROG_LOAD,       /* 加载ebpf虚拟机指令程序 */
+	BPF_OBJ_PIN,         /* for persistent maps/progs */
+	BPF_OBJ_GET,
 };
 
 enum bpf_map_type {
 	BPF_MAP_TYPE_UNSPEC,
-	BPF_MAP_TYPE_HASH,               /* */
+	BPF_MAP_TYPE_HASH,               /* HASH表 */
 	BPF_MAP_TYPE_ARRAY,              /* 数组式表 */
-	BPF_MAP_TYPE_PROG_ARRAY,         /* */
+	BPF_MAP_TYPE_PROG_ARRAY,         /* ebpf程序 */
 	BPF_MAP_TYPE_PERF_EVENT_ARRAY,   /* */
 	BPF_MAP_TYPE_PERCPU_HASH,        /* */
 	BPF_MAP_TYPE_PERCPU_ARRAY,       /* */
@@ -105,13 +105,13 @@ enum bpf_map_type {
 
 enum bpf_prog_type {
 	BPF_PROG_TYPE_UNSPEC,
-	BPF_PROG_TYPE_SOCKET_FILTER,
-	BPF_PROG_TYPE_KPROBE,
-	BPF_PROG_TYPE_SCHED_CLS,
-	BPF_PROG_TYPE_SCHED_ACT,
-	BPF_PROG_TYPE_TRACEPOINT,
-	BPF_PROG_TYPE_XDP,
-	BPF_PROG_TYPE_PERF_EVENT,
+	BPF_PROG_TYPE_SOCKET_FILTER,     /* */
+	BPF_PROG_TYPE_KPROBE,            /**/
+	BPF_PROG_TYPE_SCHED_CLS,         /**/
+	BPF_PROG_TYPE_SCHED_ACT,         /**/
+	BPF_PROG_TYPE_TRACEPOINT,        /**/
+	BPF_PROG_TYPE_XDP,               /**/
+	BPF_PROG_TYPE_PERF_EVENT,        /**/
 };
 
 #define BPF_PSEUDO_MAP_FD	1
@@ -147,9 +147,11 @@ union bpf_attr {
 		__u32		insn_cnt;
 		__aligned_u64	insns;
 		__aligned_u64	license;
+        
 		__u32		log_level;	/* verbosity level of verifier */
 		__u32		log_size;	/* size of user buffer */
-		__aligned_u64	log_buf;	/* user supplied buffer */
+		__aligned_u64	log_buf;	/* 用于存放bpf_check()结果，user supplied buffer */
+        
 		__u32		kern_version;	/* checked when prog_type=kprobe */
 	};
 
@@ -161,7 +163,8 @@ union bpf_attr {
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
- */
+ *//* ebpf函数索引，为map_perf_test_kern.c等引用；当加载ebpf程序时，由
+      fixup_bpf_calls() 修正为系统函数调用 */
 enum bpf_func_id {
 	BPF_FUNC_unspec,
 	BPF_FUNC_map_lookup_elem, /* void *map_lookup_elem(&map, &key) */
@@ -521,17 +524,17 @@ struct bpf_tunnel_key {
  * A valid XDP program must return one of these defined values. All other
  * return codes are reserved for future use. Unknown return codes will result
  * in packet drop.
- */
+ *//* XDP动作类型 */
 enum xdp_action {
-	XDP_ABORTED = 0,
-	XDP_DROP,
-	XDP_PASS,
-	XDP_TX,
+	XDP_ABORTED = 0,  /* 同XDP_DROP */
+	XDP_DROP,         /* 丢弃报文 */
+	XDP_PASS,         /* 继续后续流程 */
+	XDP_TX,           /* 直接转发报文 */
 };
 
 /* user accessible metadata for XDP packet hook
  * new fields must be added to the end of this structure
- */
+ *//* 对应XDP处理函数的入口参数 */
 struct xdp_md {
 	__u32 data;
 	__u32 data_end;

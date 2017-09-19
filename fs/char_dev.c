@@ -24,6 +24,7 @@
 
 #include "internal.h"
 
+/* 维护系统中注册的字符设备 */
 static struct kobj_map *cdev_map;
 
 static DEFINE_MUTEX(chrdevs_lock);
@@ -453,7 +454,7 @@ static int exact_lock(dev_t dev, void *data)
  *
  * cdev_add() adds the device represented by @p to the system, making it
  * live immediately.  A negative error code is returned on failure.
- */
+ *//* 此函数成功返回后，意味着设备可见，随时可被使用 */
 int cdev_add(struct cdev *p, dev_t dev, unsigned count)
 {
 	int error;

@@ -521,6 +521,7 @@ err_put:
 
 static LIST_HEAD(bpf_prog_types);
 
+/* 查找注册的bpf程序类型，获取对应的操控函数集合 */
 static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 {
 	struct bpf_prog_type_list *tl;
@@ -536,6 +537,7 @@ static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 	return -EINVAL;
 }
 
+/* 注册ebpf支持的程序类型 */
 void bpf_register_prog_type(struct bpf_prog_type_list *tl)
 {
 	list_add(&tl->list_node, &bpf_prog_types);
@@ -549,7 +551,7 @@ void bpf_register_prog_type(struct bpf_prog_type_list *tl)
  * else ...
  *
  * this function is called after eBPF program passed verification
- */
+ *//* 替换ebpf指令中的函数索引(enum bpf_func_id)为函数地址 */
 static void fixup_bpf_calls(struct bpf_prog *prog)
 {
 	const struct bpf_func_proto *fn;
@@ -582,10 +584,12 @@ static void fixup_bpf_calls(struct bpf_prog *prog)
 				continue;
 			}
 
+            /* 根据索引查找定义的函数原型 */
 			fn = prog->aux->ops->get_func_proto(insn->imm);
+            
 			/* all functions that have prototype and verifier allowed
 			 * programs to call them, must be real in-kernel functions
-			 */
+			 *//* 替换函数索引为函数地址(相对于__bpf_call_base()的偏移) */
 			BUG_ON(!fn->func);
 			insn->imm = fn->func - __bpf_call_base;
 		}
@@ -755,6 +759,7 @@ static int bpf_prog_load(union bpf_attr *attr)
 	    attr->kern_version != LINUX_VERSION_CODE)
 		return -EINVAL;
 
+    /* socket插口过滤，必须具有管理员权限 */
 	if (type != BPF_PROG_TYPE_SOCKET_FILTER && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
@@ -763,6 +768,7 @@ static int bpf_prog_load(union bpf_attr *attr)
 	if (!prog)
 		return -ENOMEM;
 
+    /* 检测RLIMIT_MEMLOCK内存上限，参考man getrlimit/RLIMIT_MEMLOCK */
 	err = bpf_prog_charge_memlock(prog);
 	if (err)
 		goto free_prog_nouncharge;
@@ -781,20 +787,23 @@ static int bpf_prog_load(union bpf_attr *attr)
 	atomic_set(&prog->aux->refcnt, 1);
 	prog->gpl_compatible = is_gpl ? 1 : 0;
 
-	/* 查找已注册的程序类型，find program type: socket_filter vs tracing_filter */
+	/* 查找已注册的程序类型，初始化struct bpf_prog->aux->ops
+       find program type: socket_filter vs tracing_filter */
 	err = find_prog_type(type, prog);
 	if (err < 0)
 		goto free_prog;
 
-	/* 安全性检测，run eBPF verifier */
+	/* 安全性检测，包括代码环路、总路径代码指令数上限、分支上限、语法语义、寄存器\栈状态等
+       run eBPF verifier */
 	err = bpf_check(&prog, attr);
 	if (err < 0)
 		goto free_used_maps;
 
-	/* fixup BPF_CALL->imm field */
+	/* 替换ebpf函数调用索引为对应地址偏移；fixup BPF_CALL->imm field */
 	fixup_bpf_calls(prog);
 
-	/* JIT编译，eBPF program is ready to be JITed */
+	/* 设置ebpf程序默认解释执行函数，并试图JIT编译，
+       eBPF program is ready to be JITed */
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
 		goto free_used_maps;
@@ -805,6 +814,7 @@ static int bpf_prog_load(union bpf_attr *attr)
 		/* failed to allocate fd */
 		goto free_used_maps;
 
+    /* 返回ebpf程序关联的文件fd */
 	return err;
 
 free_used_maps:
@@ -880,13 +890,13 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 	case BPF_MAP_CREATE:            /* 创建内核、用户态共享表项；返回值为共享内存fd */
 		err = map_create(&attr);
 		break;
-	case BPF_MAP_LOOKUP_ELEM:       /* */
+	case BPF_MAP_LOOKUP_ELEM:       /* 查找MAP元素 */
 		err = map_lookup_elem(&attr);
 		break;
 	case BPF_MAP_UPDATE_ELEM:       /* 更新MAP元素 */
 		err = map_update_elem(&attr);
 		break;
-	case BPF_MAP_DELETE_ELEM:       /* */
+	case BPF_MAP_DELETE_ELEM:       /* 删除MAP元素 */
 		err = map_delete_elem(&attr);
 		break;
 	case BPF_MAP_GET_NEXT_KEY:      /* 根据当前key获取下一个key，用于遍历共享表 */
@@ -895,10 +905,10 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 	case BPF_PROG_LOAD:             /* 加载ebpf程序到内核 */
 		err = bpf_prog_load(&attr);
 		break;
-	case BPF_OBJ_PIN:               /* */
-		err = bpf_obj_pin(&attr);
+	case BPF_OBJ_PIN:               /* 建立fd和路径名的对应关系，以支持持久化 */
+		err = bpf_obj_pin(&attr);   /* 对应文件系统/sys/fs/bpf/ */
 		break;
-	case BPF_OBJ_GET:               /* */
+	case BPF_OBJ_GET:               /* 通过路径名获取fd */
 		err = bpf_obj_get(&attr);
 		break;
 	default:

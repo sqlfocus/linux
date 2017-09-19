@@ -46,6 +46,7 @@ typedef struct bridge_id bridge_id;
 typedef struct mac_addr mac_addr;
 typedef __u16 port_id;
 
+/* 网桥ID */
 struct bridge_id
 {
 	unsigned char	prio[2];
@@ -150,10 +151,11 @@ struct net_bridge_vlan_group {
 	u16				pvid;
 };
 
+/* 转发数据库记录项 */
 struct net_bridge_fdb_entry
 {
-	struct hlist_node		hlist;
-	struct net_bridge_port		*dst;
+	struct hlist_node		hlist;       /* */
+	struct net_bridge_port		*dst;    /* 目的网桥接口 */
 
 	unsigned long			updated;
 	unsigned long			used;
@@ -201,11 +203,12 @@ struct net_bridge_mdb_htable
 	u32				ver;
 };
 
+/* 网桥端口 */
 struct net_bridge_port
 {
-	struct net_bridge		*br;
-	struct net_device		*dev;
-	struct list_head		list;
+	struct net_bridge		*br;        /* 回指网桥 */
+	struct net_device		*dev;       /* 端口对应的物理设备 */
+	struct list_head		list;       /* 挂接到 struct net_bridge->port_list */
 
 	/* STP */
 	u8				priority;
@@ -272,15 +275,16 @@ static inline struct net_bridge_port *br_port_get_rtnl(const struct net_device *
 		rtnl_dereference(dev->rx_handler_data) : NULL;
 }
 
+/* 应用到单个网桥的信息 */
 struct net_bridge
 {
 	spinlock_t			lock;
-	struct list_head		port_list;
-	struct net_device		*dev;
+	struct list_head		port_list;        /* 网桥端口链，struct net_bridge_port */
+	struct net_device		*dev;             /* 网桥设备的信息结构 */
 
 	struct pcpu_sw_netstats		__percpu *stats;
 	spinlock_t			hash_lock;
-	struct hlist_head		hash[BR_HASH_SIZE];
+	struct hlist_head	hash[BR_HASH_SIZE];   /* 转发表，struct net_bridge_fdb_entry */
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 	union {
 		struct rtable		fake_rtable;

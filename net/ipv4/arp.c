@@ -130,6 +130,7 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb);
 static void arp_error_report(struct neighbour *neigh, struct sk_buff *skb);
 static void parp_redo(struct sk_buff *skb);
 
+/* 可用在任何上下文使用，通用虚拟函数表 */
 static const struct neigh_ops arp_generic_ops = {
 	.family =		AF_INET,
 	.solicit =		arp_solicit,
@@ -137,7 +138,7 @@ static const struct neigh_ops arp_generic_ops = {
 	.output =		neigh_resolve_output,
 	.connected_output =	neigh_connected_output,
 };
-
+/* 设备驱动程序提供它自己的一组函数来处理L2帧头时，使用此经过优化的虚拟函数表 */
 static const struct neigh_ops arp_hh_ops = {
 	.family =		AF_INET,
 	.solicit =		arp_solicit,
@@ -145,7 +146,7 @@ static const struct neigh_ops arp_hh_ops = {
 	.output =		neigh_resolve_output,
 	.connected_output =	neigh_resolve_output,
 };
-
+/* 不需要L3到L2的地址映射 */
 static const struct neigh_ops arp_direct_ops = {
 	.family =		AF_INET,
 	.output =		neigh_direct_output,
@@ -220,7 +221,7 @@ static bool arp_key_eq(const struct neighbour *neigh, const void *pkey)
 {
 	return neigh_key_eq32(neigh, pkey);
 }
-
+/* 构建IPv4协议对应的struct neighbour */
 static int arp_constructor(struct neighbour *neigh)
 {
 	__be32 addr = *(__be32 *)neigh->primary_key;
@@ -228,6 +229,7 @@ static int arp_constructor(struct neighbour *neigh)
 	struct in_device *in_dev;
 	struct neigh_parms *parms;
 
+    /* 获取网络设备的IPv4配置信息 */
 	rcu_read_lock();
 	in_dev = __in_dev_get_rcu(dev);
 	if (!in_dev) {
@@ -235,18 +237,21 @@ static int arp_constructor(struct neighbour *neigh)
 		return -EINVAL;
 	}
 
+    /* 设置邻居地址类型 */
 	neigh->type = inet_addr_type_dev_table(dev_net(dev), dev, addr);
 
+    /* 设置arp控制参数 */
 	parms = in_dev->arp_parms;
 	__neigh_parms_put(neigh->parms);
 	neigh->parms = neigh_parms_clone(parms);
 	rcu_read_unlock();
 
-	if (!dev->header_ops) {
+    /* 选择L2操控集合 */
+	if (!dev->header_ops) {    /* 设备未使用L2头 */
 		neigh->nud_state = NUD_NOARP;
 		neigh->ops = &arp_direct_ops;
 		neigh->output = neigh_direct_output;
-	} else {
+	} else {                   /* 使用L2头 */
 		/* Good devices (checked by reading texts, but only Ethernet is
 		   tested)
 
@@ -262,7 +267,7 @@ static int arp_constructor(struct neighbour *neigh)
 		   in old paradigm.
 		 */
 
-		if (neigh->type == RTN_MULTICAST) {
+		if (neigh->type == RTN_MULTICAST) {   /* 有些设备不需要APR，但邻居子系统仍然需要一个地址 */
 			neigh->nud_state = NUD_NOARP;
 			arp_mc_map(addr, neigh->ha, dev, 1);
 		} else if (dev->flags & (IFF_NOARP | IFF_LOOPBACK)) {
@@ -274,14 +279,14 @@ static int arp_constructor(struct neighbour *neigh)
 			memcpy(neigh->ha, dev->broadcast, dev->addr_len);
 		}
 
-		if (dev->header_ops->cache)
+		if (dev->header_ops->cache)    /* 设备可管理L2头部缓存 */
 			neigh->ops = &arp_hh_ops;
 		else
 			neigh->ops = &arp_generic_ops;
 
 		if (neigh->nud_state & NUD_VALID)
 			neigh->output = neigh->ops->connected_output;
-		else
+		else                           /* 根据状态，选择对应的输出函数 */
 			neigh->output = neigh->ops->output;
 	}
 	return 0;
@@ -326,6 +331,7 @@ void arp_send(int type, int ptype, __be32 dest_ip,
 }
 EXPORT_SYMBOL(arp_send);
 
+/* 发送ARP请求 */
 static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 {
 	__be32 saddr = 0;
@@ -342,14 +348,15 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 		rcu_read_unlock();
 		return;
 	}
+    /* 选择放到ARP头中的源IP */
 	switch (IN_DEV_ARP_ANNOUNCE(in_dev)) {
 	default:
-	case 0:		/* By default announce any local IP */
+	case 0:		/* 选择任何本地IP地址，By default announce any local IP */
 		if (skb && inet_addr_type_dev_table(dev_net(dev), dev,
 					  ip_hdr(skb)->saddr) == RTN_LOCAL)
 			saddr = ip_hdr(skb)->saddr;
 		break;
-	case 1:		/* Restrict announcements of saddr in same subnet */
+	case 1:		/* 选择和目的地址同一子网的地址，否则使用case2的结果，Restrict announcements of saddr in same subnet */
 		if (!skb)
 			break;
 		saddr = ip_hdr(skb)->saddr;
@@ -361,12 +368,12 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 		}
 		saddr = 0;
 		break;
-	case 2:		/* Avoid secondary IPs, get a primary/preferred one */
+	case 2:		/* 优先使用主地址，Avoid secondary IPs, get a primary/preferred one */
 		break;
 	}
 	rcu_read_unlock();
 
-	if (!saddr)
+	if (!saddr) /* 为给定设备选择最佳的源ip地址 */
 		saddr = inet_select_addr(dev, target, RT_SCOPE_LINK);
 
 	probes -= NEIGH_VAR(neigh->parms, UCAST_PROBES);
@@ -378,11 +385,12 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 	} else {
 		probes -= NEIGH_VAR(neigh->parms, APP_PROBES);
 		if (probes < 0) {
-			neigh_app_ns(neigh);
+			neigh_app_ns(neigh);    /* 用户空间arpd??? */
 			return;
 		}
 	}
 
+    /* 发送ARP请求 */
 	if (skb && !(dev->priv_flags & IFF_XMIT_DST_RELEASE))
 		dst = skb_dst(skb);
 	arp_send_dst(ARPOP_REQUEST, ETH_P_ARP, target, dev, saddr,
@@ -705,7 +713,7 @@ static int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)
 	}
 
 	/* Understand only these message types */
-
+    /* 仅处理此两种报文类型 */
 	if (arp->ar_op != htons(ARPOP_REPLY) &&
 	    arp->ar_op != htons(ARPOP_REQUEST))
 		goto out_free_skb;
@@ -897,16 +905,16 @@ static void parp_redo(struct sk_buff *skb)
 /*
  *	Receive an arp request from the device layer.
  */
-
+/* IPv4邻居子系统ARP的收包处理 */
 static int arp_rcv(struct sk_buff *skb, struct net_device *dev,
 		   struct packet_type *pt, struct net_device *orig_dev)
 {
 	const struct arphdr *arp;
 
-	/* do not tweak dropwatch on an ARP we will ignore */
-	if (dev->flags & IFF_NOARP ||
-	    skb->pkt_type == PACKET_OTHERHOST ||
-	    skb->pkt_type == PACKET_LOOPBACK)
+	/* 不处理的情况，do not tweak dropwatch on an ARP we will ignore */
+	if (dev->flags & IFF_NOARP ||            /* 网络设备不支持ARP */
+	    skb->pkt_type == PACKET_OTHERHOST || /* 报文目的地址并非接收接口 */
+	    skb->pkt_type == PACKET_LOOPBACK)    /* 环回设备为虚拟设备，无硬件地址，不需要ARP */
 		goto consumeskb;
 
 	skb = skb_share_check(skb, GFP_ATOMIC);
@@ -1244,17 +1252,18 @@ static struct packet_type arp_packet_type __read_mostly = {
 
 static int arp_proc_init(void);
 
+/* IPv4邻居子系统arp初始化 */
 void __init arp_init(void)
 {
-	neigh_table_init(NEIGH_ARP_TABLE, &arp_tbl);
+	neigh_table_init(NEIGH_ARP_TABLE, &arp_tbl);   /* 注册arp邻居子系统协议 */
 
-	dev_add_pack(&arp_packet_type);
-	arp_proc_init();
+	dev_add_pack(&arp_packet_type);                /* 注册arp报文 */
+	arp_proc_init();                               /* 注册/proc文件系统 */
 #ifdef CONFIG_SYSCTL
 	neigh_sysctl_register(NULL, &arp_tbl.parms, NULL);
 #endif
 	register_netdevice_notifier(&arp_netdev_notifier);
-}
+}                                                  /* 注册到netdev_chain通知链 */
 
 #ifdef CONFIG_PROC_FS
 #if IS_ENABLED(CONFIG_AX25)

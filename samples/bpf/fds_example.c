@@ -27,6 +27,50 @@
 #define BPF_M_MAP	1
 #define BPF_M_PROG	2
 
+/* 
+   此用例测试"persistent" eBPF maps/programs；通过此功能，maps/programs可以
+   在宿主(创建者)程序退出后继续在内存中存活，并可以被后续的程序检索到。
+Example with maps:
+  # ./fds_example -F /sys/fs/bpf/m -P -m -k 1 -v 42
+      bpf: map fd:3 (Success)                   设置持久化的共享表，并填充键值对
+      bpf: pin ret:(0,Success)
+      bpf: fd:3 u->(1:42) ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/m -G -m -k 1
+      bpf: get fd:3 (Success)                   通过路径名获取指定键的值
+      bpf: fd:3 l->(1):42 ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/m -G -m -k 1 -v 24
+      bpf: get fd:3 (Success)                   通过路径名更新指定键
+      bpf: fd:3 u->(1:24) ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/m -G -m -k 1
+      bpf: get fd:3 (Success)                   获取
+      bpf: fd:3 l->(1):24 ret:(0,Success)
+
+  # ./fds_example -F /sys/fs/bpf/m2 -P -m
+      bpf: map fd:3 (Success)                   创建持久化的共享表
+      bpf: pin ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/m2 -G -m -k 1
+      bpf: get fd:3 (Success)                   查找不存在的键
+      bpf: fd:3 l->(1):0 ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/m2 -G -m
+      bpf: get fd:3 (Success)                   查找共享表
+
+Example with progs:
+  # ./fds_example -F /sys/fs/bpf/p -P -p
+      bpf: prog fd:3 (Success)                  创建共享ebpf程序
+      bpf: pin ret:(0,Success)
+      bpf sock:4 <- fd:3 attached ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/p -G -p
+      bpf: get fd:3 (Success)                   获取指定程序
+      bpf: sock:4 <- fd:3 attached ret:(0,Success)
+
+  # ./fds_example -F /sys/fs/bpf/p2 -P -p -o ./sockex1_kern.o
+      bpf: prog fd:5 (Success)                  设置程序
+      bpf: pin ret:(0,Success)
+      bpf: sock:3 <- fd:5 attached ret:(0,Success)
+  # ./fds_example -F /sys/fs/bpf/p2 -G -p
+      bpf: get fd:3 (Success)                   获取程序
+      bpf: sock:4 <- fd:3 attached ret:(0,Success)
+*/
 static void usage(void)
 {
 	printf("Usage: fds_example [...]\n");
@@ -68,15 +112,15 @@ static int bpf_do_map(const char *file, uint32_t flags, uint32_t key,
 {
 	int fd, ret;
 
-	if (flags & BPF_F_PIN) {
-		fd = bpf_map_create();
+	if (flags & BPF_F_PIN) {    /* 创建共享表 */
+		fd = bpf_map_create();       /* 创建 */
 		printf("bpf: map fd:%d (%s)\n", fd, strerror(errno));
 		assert(fd > 0);
 
-		ret = bpf_obj_pin(fd, file);
+		ret = bpf_obj_pin(fd, file); /* 加载到文件系统 */
 		printf("bpf: pin ret:(%d,%s)\n", ret, strerror(errno));
 		assert(ret == 0);
-	} else {
+	} else {                    /* 获取共享表 */
 		fd = bpf_obj_get(file);
 		printf("bpf: get fd:%d (%s)\n", fd, strerror(errno));
 		assert(fd > 0);
@@ -86,12 +130,12 @@ static int bpf_do_map(const char *file, uint32_t flags, uint32_t key,
 		ret = bpf_update_elem(fd, &key, &value, 0);
 		printf("bpf: fd:%d u->(%u:%u) ret:(%d,%s)\n", fd, key, value,
 		       ret, strerror(errno));
-		assert(ret == 0);
+		assert(ret == 0);      /* 设置\更新键值 */
 	} else if (flags & BPF_F_KEY) {
 		ret = bpf_lookup_elem(fd, &key, &value);
 		printf("bpf: fd:%d l->(%u):%u ret:(%d,%s)\n", fd, key, value,
 		       ret, strerror(errno));
-		assert(ret == 0);
+		assert(ret == 0);      /* 获取键值 */
 	}
 
 	return 0;
@@ -101,7 +145,7 @@ static int bpf_do_prog(const char *file, uint32_t flags, const char *object)
 {
 	int fd, sock, ret;
 
-	if (flags & BPF_F_PIN) {
+	if (flags & BPF_F_PIN) {   /* 创建ebpf程序 */
 		fd = bpf_prog_create(object);
 		printf("bpf: prog fd:%d (%s)\n", fd, strerror(errno));
 		assert(fd > 0);
@@ -109,14 +153,14 @@ static int bpf_do_prog(const char *file, uint32_t flags, const char *object)
 		ret = bpf_obj_pin(fd, file);
 		printf("bpf: pin ret:(%d,%s)\n", ret, strerror(errno));
 		assert(ret == 0);
-	} else {
+	} else {                   /* 获取ebpf程序 */
 		fd = bpf_obj_get(file);
 		printf("bpf: get fd:%d (%s)\n", fd, strerror(errno));
 		assert(fd > 0);
 	}
 
 	sock = open_raw_sock("lo");
-	assert(sock > 0);
+	assert(sock > 0);          /* 加载到loopback回环接口 */
 
 	ret = setsockopt(sock, SOL_SOCKET, SO_ATTACH_BPF, &fd, sizeof(fd));
 	printf("bpf: sock:%d <- fd:%d attached ret:(%d,%s)\n", sock, fd,
@@ -125,6 +169,7 @@ static int bpf_do_prog(const char *file, uint32_t flags, const char *object)
 
 	return 0;
 }
+
 
 int main(int argc, char **argv)
 {
@@ -172,9 +217,9 @@ int main(int argc, char **argv)
 		goto out;
 
 	switch (mode) {
-	case BPF_M_MAP:
+	case BPF_M_MAP:    /* 共享表相关操作 */
 		return bpf_do_map(file, flags, key, value);
-	case BPF_M_PROG:
+	case BPF_M_PROG:   /* ebpf程序对象相关操作 */
 		return bpf_do_prog(file, flags, object);
 	}
 out:

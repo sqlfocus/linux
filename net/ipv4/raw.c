@@ -89,6 +89,7 @@ struct raw_frag_vec {
 	int hlen;
 };
 
+/* 存储接收raw报文的插口 */
 static struct raw_hashinfo raw_v4_hashinfo = {
 	.lock = __RW_LOCK_UNLOCKED(raw_v4_hashinfo.lock),
 };

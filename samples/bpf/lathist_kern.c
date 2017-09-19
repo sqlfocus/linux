@@ -17,7 +17,7 @@
  * hash table) because managing dynamic memory from the
  * trace_preempt_[on|off] tracepoints hooks is not supported.
  */
-
+/* 静态数组 */
 struct bpf_map_def SEC("maps") my_map = {
 	.type = BPF_MAP_TYPE_ARRAY,
 	.key_size = sizeof(int),
@@ -32,7 +32,7 @@ int bpf_prog1(struct pt_regs *ctx)
 	u64 *ts = bpf_map_lookup_elem(&my_map, &cpu);
 
 	if (ts)
-		*ts = bpf_ktime_get_ns();
+		*ts = bpf_ktime_get_ns();        /* 获取启动时间 */
 
 	return 0;
 }

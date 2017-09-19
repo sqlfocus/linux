@@ -28,11 +28,11 @@
  * Kprobe event core functions
  */
 struct trace_kprobe {
-	struct list_head	list;
-	struct kretprobe	rp;	/* Use rp.kp for kprobe use */
-	unsigned long __percpu *nhit;
-	const char		*symbol;	/* symbol name */
-	struct trace_probe	tp;
+	struct list_head	list;    /* 加入 probe_list 链表 */
+	struct kretprobe	rp;      /* 对应的kprobe结构，Use rp.kp for kprobe use */
+	unsigned long __percpu *nhit;/* percpu变量，用于统计命中计数 */
+	const char		*symbol;	 /* 待探测的函数名(符号)，symbol name */
+	struct trace_probe	tp;      /* 探针描述结构 */
 };
 
 #define SIZEOF_TRACE_KPROBE(n)				\
@@ -77,7 +77,8 @@ static int register_kprobe_event(struct trace_kprobe *tk);
 static int unregister_kprobe_event(struct trace_kprobe *tk);
 
 static DEFINE_MUTEX(probe_lock);
-static LIST_HEAD(probe_list);
+static LIST_HEAD(probe_list);        /* 添加到目录/sys/kernel/debug/tracing/kprobe_events
+                                        的kprobe探针，对应结构体struct trace_kprobe */
 
 static int kprobe_dispatcher(struct kprobe *kp, struct pt_regs *regs);
 static int kretprobe_dispatcher(struct kretprobe_instance *ri,
@@ -274,14 +275,17 @@ static struct trace_kprobe *alloc_trace_kprobe(const char *group,
 	struct trace_kprobe *tk;
 	int ret = -ENOMEM;
 
+    /* 分配待获取的变量空间 */
 	tk = kzalloc(SIZEOF_TRACE_KPROBE(nargs), GFP_KERNEL);
 	if (!tk)
 		return ERR_PTR(ret);
 
+    /* 分配percpu变量，用于统计命中计数 */
 	tk->nhit = alloc_percpu(unsigned long);
 	if (!tk->nhit)
 		goto error;
 
+    /* 探针插入点 */
 	if (symbol) {
 		tk->symbol = kstrdup(symbol, GFP_KERNEL);
 		if (!tk->symbol)
@@ -291,6 +295,7 @@ static struct trace_kprobe *alloc_trace_kprobe(const char *group,
 	} else
 		tk->rp.kp.addr = addr;
 
+    /* 初始化探针点处理函数 */
 	if (is_return)
 		tk->rp.handler = kretprobe_dispatcher;
 	else
@@ -301,6 +306,7 @@ static struct trace_kprobe *alloc_trace_kprobe(const char *group,
 		goto error;
 	}
 
+    /* 初始化跟踪点事件名，及组名 */
 	tk->tp.call.class = &tk->tp.class;
 	tk->tp.call.name = kstrdup(event, GFP_KERNEL);
 	if (!tk->tp.call.name)
@@ -315,6 +321,7 @@ static struct trace_kprobe *alloc_trace_kprobe(const char *group,
 	if (!tk->tp.class.system)
 		goto error;
 
+    /* 初始化队列节点 */
 	INIT_LIST_HEAD(&tk->list);
 	INIT_LIST_HEAD(&tk->tp.files);
 	return tk;
@@ -443,23 +450,27 @@ static int __register_trace_kprobe(struct trace_kprobe *tk)
 {
 	int i, ret;
 
+    /* 避免重复注册 */
 	if (trace_probe_is_registered(&tk->tp))
 		return -EINVAL;
 
+    /* 注册获取的变量？？？ */
 	for (i = 0; i < tk->tp.nr_args; i++)
 		traceprobe_update_arg(&tk->tp.args[i]);
 
-	/* Set/clear disabled flag according to tp->flag */
+	/* 设置使能标识，Set/clear disabled flag according to tp->flag */
 	if (trace_probe_is_enabled(&tk->tp))
 		tk->rp.kp.flags &= ~KPROBE_FLAG_DISABLED;
 	else
 		tk->rp.kp.flags |= KPROBE_FLAG_DISABLED;
 
+    /* 注册探针 */
 	if (trace_kprobe_is_return(tk))
 		ret = register_kretprobe(&tk->rp);
 	else
 		ret = register_kprobe(&tk->rp.kp);
 
+    /* 设置注册标识 */
 	if (ret == 0)
 		tk->tp.flags |= TP_FLAG_REGISTERED;
 	else {
@@ -482,13 +493,13 @@ static int __register_trace_kprobe(struct trace_kprobe *tk)
 static void __unregister_trace_kprobe(struct trace_kprobe *tk)
 {
 	if (trace_probe_is_registered(&tk->tp)) {
-		if (trace_kprobe_is_return(tk))
+		if (trace_kprobe_is_return(tk))          /* 卸载kretprobe */
 			unregister_kretprobe(&tk->rp);
 		else
-			unregister_kprobe(&tk->rp.kp);
-		tk->tp.flags &= ~TP_FLAG_REGISTERED;
+			unregister_kprobe(&tk->rp.kp);       /* 卸载kprobe */
+		tk->tp.flags &= ~TP_FLAG_REGISTERED;     /* 清理注册标记 */
 		/* Cleanup kprobe for reuse */
-		if (tk->rp.kp.symbol_name)
+		if (tk->rp.kp.symbol_name)               /* 清理探针插入点地址 */
 			tk->rp.kp.addr = NULL;
 	}
 }
@@ -497,15 +508,15 @@ static void __unregister_trace_kprobe(struct trace_kprobe *tk)
 static int unregister_trace_kprobe(struct trace_kprobe *tk)
 {
 	/* Enabled event can not be unregistered */
-	if (trace_probe_is_enabled(&tk->tp))
+	if (trace_probe_is_enabled(&tk->tp))   /* 不能卸载使能的探针 */
 		return -EBUSY;
 
 	/* Will fail if probe is being used by ftrace or perf */
-	if (unregister_kprobe_event(tk))
+	if (unregister_kprobe_event(tk))       /* 卸载perf事件 */
 		return -EBUSY;
 
-	__unregister_trace_kprobe(tk);
-	list_del(&tk->list);
+	__unregister_trace_kprobe(tk);         /* 卸载kprobe */
+	list_del(&tk->list);                   /* 从 probe_list 链表删除 */
 
 	return 0;
 }
@@ -528,19 +539,19 @@ static int register_trace_kprobe(struct trace_kprobe *tk)
 		free_trace_kprobe(old_tk);
 	}
 
-	/* Register new event */
+	/* 注册perf事件，Register new event */
 	ret = register_kprobe_event(tk);
 	if (ret) {
 		pr_warn("Failed to register probe event(%d)\n", ret);
 		goto end;
 	}
 
-	/* Register k*probe */
+	/* 注册探针，Register k*probe */
 	ret = __register_trace_kprobe(tk);
 	if (ret < 0)
 		unregister_kprobe_event(tk);
 	else
-		list_add_tail(&tk->list, &probe_list);
+		list_add_tail(&tk->list, &probe_list);   /* 加入 probe_list 队列 */
 
 end:
 	mutex_unlock(&probe_lock);
@@ -581,6 +592,8 @@ static struct notifier_block trace_kprobe_module_nb = {
 	.priority = 1	/* Invoked after kprobe module callback */
 };
 
+/* 对应目录文件/sys/kernel/debug/tracing/kprobe_events的写操作；
+   添加kprobe探针 */
 static int create_trace_kprobe(int argc, char **argv)
 {
 	/*
@@ -611,12 +624,12 @@ static int create_trace_kprobe(int argc, char **argv)
 	void *addr = NULL;
 	char buf[MAX_EVENT_NAME_LEN];
 
-	/* argc must be >= 1 */
-	if (argv[0][0] == 'p')
+	/* 提取插入探针类型，argc must be >= 1 */
+	if (argv[0][0] == 'p')          /* kprobe */
 		is_return = false;
-	else if (argv[0][0] == 'r')
+	else if (argv[0][0] == 'r')     /* kretprobe */
 		is_return = true;
-	else if (argv[0][0] == '-')
+	else if (argv[0][0] == '-')     /* 删除探针 */
 		is_delete = true;
 	else {
 		pr_info("Probe definition must be started with 'p', 'r' or"
@@ -624,6 +637,7 @@ static int create_trace_kprobe(int argc, char **argv)
 		return -EINVAL;
 	}
 
+    /* 提取探针组名、事件名 */
 	if (argv[0][1] == ':') {
 		event = &argv[0][2];
 		if (strchr(event, '/')) {
@@ -640,29 +654,31 @@ static int create_trace_kprobe(int argc, char **argv)
 			return -EINVAL;
 		}
 	}
-	if (!group)
+	if (!group)                     /* 默认组名kprobes */
 		group = KPROBE_EVENT_SYSTEM;
 
+    /* 动作1: 删除探针 */
 	if (is_delete) {
 		if (!event) {
 			pr_info("Delete command needs an event name.\n");
 			return -EINVAL;
 		}
 		mutex_lock(&probe_lock);
-		tk = find_trace_kprobe(event, group);
+		tk = find_trace_kprobe(event, group);   /* 查找 */
 		if (!tk) {
 			mutex_unlock(&probe_lock);
 			pr_info("Event %s/%s doesn't exist.\n", group, event);
 			return -ENOENT;
 		}
 		/* delete an event */
-		ret = unregister_trace_kprobe(tk);
+		ret = unregister_trace_kprobe(tk);      /* 删除 */
 		if (ret == 0)
 			free_trace_kprobe(tk);
 		mutex_unlock(&probe_lock);
 		return ret;
 	}
 
+    /* 提取探针插入点的符号名+偏移/地址 */
 	if (argc < 2) {
 		pr_info("Probe point is not specified.\n");
 		return -EINVAL;
@@ -694,7 +710,7 @@ static int create_trace_kprobe(int argc, char **argv)
 	}
 	argc -= 2; argv += 2;
 
-	/* setup a probe */
+	/* 未指定则构建事件名，setup a probe */
 	if (!event) {
 		/* Make a new event name */
 		if (symbol)
@@ -705,6 +721,8 @@ static int create_trace_kprobe(int argc, char **argv)
 				 is_return ? 'r' : 'p', addr);
 		event = buf;
 	}
+
+    /* 分配探针描述结构，初始化监测点探针处理函数 kretprobe_dispatcher/kprobe_dispatcher() */
 	tk = alloc_trace_kprobe(group, event, addr, symbol, offset, argc,
 			       is_return);
 	if (IS_ERR(tk)) {
@@ -713,7 +731,7 @@ static int create_trace_kprobe(int argc, char **argv)
 		return PTR_ERR(tk);
 	}
 
-	/* parse arguments */
+	/* 解析trace事件待打印的参数，parse arguments */
 	ret = 0;
 	for (i = 0; i < argc && i < MAX_TRACE_ARGS; i++) {
 		struct probe_arg *parg = &tk->tp.args[i];
@@ -764,6 +782,7 @@ static int create_trace_kprobe(int argc, char **argv)
 		}
 	}
 
+    /* 动作2: 注册探针 */
 	ret = register_trace_kprobe(tk);
 	if (ret)
 		goto error;
@@ -869,6 +888,7 @@ static ssize_t probes_write(struct file *file, const char __user *buffer,
 			create_trace_kprobe);
 }
 
+/* kprobe探针操控集合，对应目录/sys/kernel/debug/tracing/kprobe_events */
 static const struct file_operations kprobe_events_ops = {
 	.owner          = THIS_MODULE,
 	.open           = probes_open,
@@ -1236,17 +1256,18 @@ static int kprobe_register(struct trace_event_call *event,
 	return 0;
 }
 
+/* 由/sys/kernel/debug/tracing/kprobe_events触发的kprobe探针，的统一分发处理函数 */
 static int kprobe_dispatcher(struct kprobe *kp, struct pt_regs *regs)
 {
 	struct trace_kprobe *tk = container_of(kp, struct trace_kprobe, rp.kp);
 
-	raw_cpu_inc(*tk->nhit);
+	raw_cpu_inc(*tk->nhit);              /* 增加命中计数 */
 
 	if (tk->tp.flags & TP_FLAG_TRACE)
-		kprobe_trace_func(tk, regs);
+		kprobe_trace_func(tk, regs);     /* 获取注册的参数 */
 #ifdef CONFIG_PERF_EVENTS
 	if (tk->tp.flags & TP_FLAG_PROFILE)
-		kprobe_perf_func(tk, regs);
+		kprobe_perf_func(tk, regs);      /* 调用ebpf程序 */
 #endif
 	return 0;	/* We don't tweek kernel, so just return 0 */
 }
@@ -1322,7 +1343,7 @@ static int unregister_kprobe_event(struct trace_kprobe *tk)
 	return ret;
 }
 
-/* Make a tracefs interface for controlling probe points */
+/* 初始化kprobe的跟踪接口，Make a tracefs interface for controlling probe points */
 static __init int init_kprobe_trace(void)
 {
 	struct dentry *d_tracer;
@@ -1335,6 +1356,8 @@ static __init int init_kprobe_trace(void)
 	if (IS_ERR(d_tracer))
 		return 0;
 
+    /* 创建文件/sys/kernel/debug/tracing/kprobe_events，用于添加、删除
+       kprobe动态跟踪点 */
 	entry = tracefs_create_file("kprobe_events", 0644, d_tracer,
 				    NULL, &kprobe_events_ops);
 
@@ -1342,7 +1365,8 @@ static __init int init_kprobe_trace(void)
 	if (!entry)
 		pr_warn("Could not create tracefs 'kprobe_events' entry\n");
 
-	/* Profile interface */
+	/* 创建文件/sys/kernel/debug/tracing/kprobe_profile, 记录kprobe的命
+       中次数；Profile interface */
 	entry = tracefs_create_file("kprobe_profile", 0444, d_tracer,
 				    NULL, &kprobe_profile_ops);
 

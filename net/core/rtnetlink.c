@@ -2158,9 +2158,11 @@ static int do_setlink(const struct sk_buff *skb,
 		status |= DO_SETLINK_NOTIFY;
 	}
 
+    /* XDP属性设置 */
 	if (tb[IFLA_XDP]) {
 		struct nlattr *xdp[IFLA_XDP_MAX + 1];
 
+        /* 提取属性值 */
 		err = nla_parse_nested(xdp, IFLA_XDP_MAX, tb[IFLA_XDP],
 				       ifla_xdp_policy);
 		if (err < 0)
@@ -2170,7 +2172,7 @@ static int do_setlink(const struct sk_buff *skb,
 			err = -EINVAL;
 			goto errout;
 		}
-		if (xdp[IFLA_XDP_FD]) {
+		if (xdp[IFLA_XDP_FD]) {          /* 设置ebpf fd */
 			err = dev_change_xdp_fd(dev,
 						nla_get_s32(xdp[IFLA_XDP_FD]));
 			if (err)
@@ -2192,6 +2194,7 @@ errout:
 	return err;
 }
 
+/* RTM_SETLINK消息处理函数 */
 static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
 	struct net *net = sock_net(skb->sk);
@@ -2201,15 +2204,18 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh)
 	struct nlattr *tb[IFLA_MAX+1];
 	char ifname[IFNAMSIZ];
 
+    /* 提取属性，结果(指针)放置到tb[] */
 	err = nlmsg_parse(nlh, sizeof(*ifm), tb, IFLA_MAX, ifla_policy);
 	if (err < 0)
 		goto errout;
 
+    /* 接口名属性 */
 	if (tb[IFLA_IFNAME])
 		nla_strlcpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	else
 		ifname[0] = '\0';
 
+    /* 根据接口ID提取对应的网络设备结构 */
 	err = -EINVAL;
 	ifm = nlmsg_data(nlh);
 	if (ifm->ifi_index > 0)
@@ -2224,10 +2230,12 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh)
 		goto errout;
 	}
 
+    /* 验证消息可用性 */
 	err = validate_linkmsg(dev, tb);
 	if (err < 0)
 		goto errout;
 
+    /* 执行属性设置 */
 	err = do_setlink(skb, dev, ifm, tb, ifname, 0);
 errout:
 	return err;
@@ -2655,6 +2663,7 @@ out_unregister:
 	}
 }
 
+/* RTM_GETLINK消息处理 */
 static int rtnl_getlink(struct sk_buff *skb, struct nlmsghdr* nlh)
 {
 	struct net *net = sock_net(skb->sk);
@@ -3968,7 +3977,7 @@ out:
 }
 
 /* Process one rtnetlink message. */
-
+/* 处理消息 */
 static int rtnetlink_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
 	struct net *net = sock_net(skb->sk);
@@ -3994,6 +4003,7 @@ static int rtnetlink_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 	if (kind != 2 && !netlink_net_capable(skb, CAP_NET_ADMIN))
 		return -EPERM;
 
+    /* RTM_GETLINK消息 */
 	if (kind == 2 && nlh->nlmsg_flags&NLM_F_DUMP) {
 		struct sock *rtnl;
 		rtnl_dumpit_func dumpit;
@@ -4020,13 +4030,14 @@ static int rtnetlink_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		return err;
 	}
 
+    /* 其他消息 */
 	doit = rtnl_get_doit(family, type);
 	if (doit == NULL)
 		return -EOPNOTSUPP;
-
 	return doit(skb, nlh);
 }
 
+/* NETLINK_ROUTE类型netlink内核插口的数据处理函数 */
 static void rtnetlink_rcv(struct sk_buff *skb)
 {
 	rtnl_lock();
@@ -4065,6 +4076,7 @@ static struct notifier_block rtnetlink_dev_notifier = {
 };
 
 
+/* 注册NETLINK_ROUTE类型的netlink内核插口 */
 static int __net_init rtnetlink_net_init(struct net *net)
 {
 	struct sock *sk;
@@ -4093,6 +4105,7 @@ static struct pernet_operations rtnetlink_net_ops = {
 	.exit = rtnetlink_net_exit,
 };
 
+/* 注册支持的消息类型对应的处理函数 */
 void __init rtnetlink_init(void)
 {
 	if (register_pernet_subsys(&rtnetlink_net_ops))

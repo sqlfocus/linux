@@ -419,6 +419,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 		return retval;
 	n = retval;
 
+    /* 初始化等待队列 */
 	poll_initwait(&table);
 	wait = &table.pt;
 	if (end_time && !end_time->tv_sec && !end_time->tv_nsec) {
@@ -429,6 +430,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 	if (end_time && !timed_out)
 		slack = select_estimate_accuracy(end_time);
 
+    /* 外围大循环 */
 	retval = 0;
 	for (;;) {
 		unsigned long *rinp, *routp, *rexp, *inp, *outp, *exp;
@@ -437,6 +439,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 		inp = fds->in; outp = fds->out; exp = fds->ex;
 		rinp = fds->res_in; routp = fds->res_out; rexp = fds->res_ex;
 
+        /* 以unsigned long为单位遍历所有的fd */
 		for (i = 0; i < n; ++rinp, ++routp, ++rexp) {
 			unsigned long in, out, ex, all_bits, bit = 1, mask, j;
 			unsigned long res_in = 0, res_out = 0, res_ex = 0;
@@ -448,6 +451,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 				continue;
 			}
 
+            /* 以bit为单位遍历单个unsigned long */
 			for (j = 0; j < BITS_PER_LONG; ++j, ++i, bit <<= 1) {
 				struct fd f;
 				if (i >= n)
@@ -462,7 +466,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 					if (f_op->poll) {
 						wait_key_set(wait, in, out,
 							     bit, busy_flag);
-						mask = (*f_op->poll)(f.file, wait);
+						mask = (*f_op->poll)(f.file, wait);  /* 调用驱动的->poll方法 */
 					}
 					fdput(f);
 					if ((mask & POLLIN_SET) && (in & bit)) {
@@ -531,6 +535,7 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 			to = &expire;
 		}
 
+        /* 没有等待的事件发生，则进程等待，最长为设定的时间 */
 		if (!poll_schedule_timeout(&table, TASK_INTERRUPTIBLE,
 					   to, slack))
 			timed_out = 1;
@@ -548,7 +553,10 @@ int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
  *
  * Update: ERESTARTSYS breaks at least the xview clock binary, so
  * I'm trying ERESTARTNOHAND which restart only when you want to.
- */
+ *//* 从执行流程可知，每次监听的位掩码及监听结果都需要在内核态和用户态
+      之间拷贝；因此如果监控的fd数量够大，非常损耗性能，而epoll则避免
+      了此开销 */
+/* <TAKECARE!!!>奇怪，并没有看到知名的1024限制 */
 int core_sys_select(int n, fd_set __user *inp, fd_set __user *outp,
 			   fd_set __user *exp, struct timespec64 *end_time)
 {
@@ -600,6 +608,7 @@ int core_sys_select(int n, fd_set __user *inp, fd_set __user *outp,
 	fds.res_out = bits + 4*size;
 	fds.res_ex  = bits + 5*size;
 
+    /* 监听事件前，copy需监听的fd位掩码到内核内存 */
 	if ((ret = get_fd_set(n, inp, fds.in)) ||
 	    (ret = get_fd_set(n, outp, fds.out)) ||
 	    (ret = get_fd_set(n, exp, fds.ex)))
@@ -608,6 +617,7 @@ int core_sys_select(int n, fd_set __user *inp, fd_set __user *outp,
 	zero_fd_set(n, fds.res_out);
 	zero_fd_set(n, fds.res_ex);
 
+    /* 监听事件 */
 	ret = do_select(n, &fds, end_time);
 
 	if (ret < 0)
@@ -619,6 +629,7 @@ int core_sys_select(int n, fd_set __user *inp, fd_set __user *outp,
 		ret = 0;
 	}
 
+    /* 监听结果copy到用户态内存 */
 	if (set_fd_set(n, inp, fds.res_in) ||
 	    set_fd_set(n, outp, fds.res_out) ||
 	    set_fd_set(n, exp, fds.res_ex))
@@ -631,6 +642,7 @@ out_nofds:
 	return ret;
 }
 
+/* select系统调用 */
 SYSCALL_DEFINE5(select, int, n, fd_set __user *, inp, fd_set __user *, outp,
 		fd_set __user *, exp, struct timeval __user *, tvp)
 {
@@ -638,6 +650,7 @@ SYSCALL_DEFINE5(select, int, n, fd_set __user *, inp, fd_set __user *, outp,
 	struct timeval tv;
 	int ret;
 
+    /* 重新精确化等待时间 */
 	if (tvp) {
 		if (copy_from_user(&tv, tvp, sizeof(tv)))
 			return -EFAULT;
@@ -649,7 +662,9 @@ SYSCALL_DEFINE5(select, int, n, fd_set __user *, inp, fd_set __user *, outp,
 			return -EINVAL;
 	}
 
+    /* 等待指定事件发生 */
 	ret = core_sys_select(n, inp, outp, exp, to);
+    /* 剩余时间 */
 	ret = poll_select_copy_remaining(&end_time, tvp, 1, ret);
 
 	return ret;

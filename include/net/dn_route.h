@@ -70,7 +70,7 @@ int dn_route_rcv(struct sk_buff *skb, struct net_device *dev,
 struct dn_route {
 	struct dst_entry dst;
 
-	struct neighbour *n;
+	struct neighbour *n;    /* 邻居系统信息 */
 
 	struct flowidn fld;
 

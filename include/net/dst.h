@@ -30,6 +30,7 @@
 
 struct sk_buff;
 
+/* 路由缓存项中，与协议无关的部分 */
 struct dst_entry {
 	struct rcu_head		rcu_head;
 	struct dst_entry	*child;
@@ -459,9 +460,9 @@ static inline int dst_neigh_output(struct dst_entry *dst, struct neighbour *n,
 
 	hh = &n->hh;
 	if ((n->nud_state & NUD_CONNECTED) && hh->hh_len)
-		return neigh_hh_output(hh, skb);
+		return neigh_hh_output(hh, skb);  /* L2层缓存头，快速发送 */
 	else
-		return n->output(n, skb);
+		return n->output(n, skb);         /* 慢速发送 */
 }
 
 static inline struct neighbour *dst_neigh_lookup(const struct dst_entry *dst, const void *daddr)

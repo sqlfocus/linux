@@ -608,6 +608,7 @@ static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
 	return ret;
 }
 
+/* 插口sendmsg() */
 int sock_sendmsg(struct socket *sock, struct msghdr *msg)
 {
 	int err = security_socket_sendmsg(sock, msg,
@@ -952,6 +953,7 @@ static long sock_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 	return err;
 }
 
+/* 轻量级的插口(struct socket)创建函数 */
 int sock_create_lite(int family, int type, int protocol, struct socket **res)
 {
 	int err;
@@ -961,13 +963,13 @@ int sock_create_lite(int family, int type, int protocol, struct socket **res)
 	if (err)
 		goto out;
 
-	sock = sock_alloc();
+	sock = sock_alloc();    /* 分配struct socket */
 	if (!sock) {
 		err = -ENOMEM;
 		goto out;
 	}
 
-	sock->type = type;
+	sock->type = type;      /* 设置类型 */
 	err = security_socket_post_create(sock, family, type, protocol, 1);
 	if (err)
 		goto out_release;
@@ -1888,6 +1890,7 @@ static int ___sys_sendmsg(struct socket *sock, struct user_msghdr __user *msg,
 
 	msg_sys->msg_name = &address;
 
+    /* 获取消息头，从用户态copy到内核态 */
 	if (MSG_CMSG_COMPAT & flags)
 		err = get_compat_msghdr(msg_sys, msg_compat, NULL, &iov);
 	else
@@ -1944,6 +1947,7 @@ static int ___sys_sendmsg(struct socket *sock, struct user_msghdr __user *msg,
 		err = sock_sendmsg_nosec(sock, msg_sys);
 		goto out_freectl;
 	}
+    /* 发送消息 */
 	err = sock_sendmsg(sock, msg_sys);
 	/*
 	 * If this is sendmmsg() and sending to current destination address was
@@ -1967,7 +1971,7 @@ out_freeiov:
 /*
  *	BSD sendmsg interface
  */
-
+/* sendmsg()BSD层接口实现 */
 long __sys_sendmsg(int fd, struct user_msghdr __user *msg, unsigned flags)
 {
 	int fput_needed, err;

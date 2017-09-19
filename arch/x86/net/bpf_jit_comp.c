@@ -1089,6 +1089,7 @@ void bpf_jit_compile(struct bpf_prog *prog)
 {
 }
 
+/* JIT编译ebpf程序 */
 struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 {
 	struct bpf_binary_header *header = NULL;
@@ -1134,7 +1135,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	 * until the image stops shrinking. Very large bpf programs
 	 * may converge on the last pass. In such case do one more
 	 * pass to emit the final image
-	 */
+	 *//* jit编译 */
 	for (pass = 0; pass < 10 || image; pass++) {
 		proglen = do_jit(prog, addrs, image, oldproglen, &ctx);
 		if (proglen <= 0) {
@@ -1167,6 +1168,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	if (bpf_jit_enable > 1)
 		bpf_jit_dump(prog->len, proglen, pass + 1, image);
 
+    /* 导出JIT结果 */
 	if (image) {
 		bpf_flush_icache(header, image + proglen);
 		set_memory_ro((unsigned long)header, header->pages);

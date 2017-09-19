@@ -97,8 +97,8 @@ enum bpf_return_type {
  */
 struct bpf_func_proto {
 	u64 (*func)(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
-	bool gpl_only;
-	bool pkt_access;
+	bool gpl_only;                     /* 是否仅允许GPL许可 */
+	bool pkt_access;                   /* 访问报文？ */
 	enum bpf_return_type ret_type;
 	enum bpf_arg_type arg1_type;
 	enum bpf_arg_type arg2_type;
@@ -175,12 +175,12 @@ struct bpf_prog_type_list {
 };
 
 struct bpf_prog_aux {
-	atomic_t refcnt;
-	u32 used_map_cnt;
+	atomic_t refcnt;                       /* 引用计数 */
+	u32 used_map_cnt;                      /* used_maps[]大小 */
 	u32 max_ctx_offset;
-	const struct bpf_verifier_ops *ops;    /* 本类型程序的操控集合 */
-	struct bpf_map **used_maps;
-	struct bpf_prog *prog;
+	const struct bpf_verifier_ops *ops;    /* 本类型程序的操控集合，如kprobe_prog_ops */
+	struct bpf_map **used_maps;            /* 使用的MAP表数组 */
+	struct bpf_prog *prog;                 /* 回指指针 */
 	struct user_struct *user;
 	union {
 		struct work_struct work;

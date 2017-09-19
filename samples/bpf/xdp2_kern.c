@@ -99,12 +99,14 @@ int xdp_prog1(struct xdp_md *ctx)
 	else
 		ipproto = 0;
 
+    /* 计数 */
 	value = bpf_map_lookup_elem(&rxcnt, &ipproto);
 	if (value)
 		*value += 1;
 
+    /* UDP报文直接转发 */
 	if (ipproto == IPPROTO_UDP) {
-		swap_src_dst_mac(data);
+		swap_src_dst_mac(data);    /* 交换源、目的MAC地址 */
 		rc = XDP_TX;
 	}
 
