@@ -304,7 +304,7 @@ struct sock_common {
   *	@sk_destruct: called at sock freeing time, i.e. when all refcnt == 0
   *	@sk_reuseport_cb: reuseport group container
   *	@sk_rcu: used during RCU grace period
-  *//* 网络层的插口结构，通过被聚合形成传输层插口结构 */
+  *//* 网络层的插口结构，通过被聚合形成传输层插口结构，如inet_sock/unix_sock等 */
 struct sock {
 	/*
 	 * Now struct inet_timewait_sock also uses sock_common, so please just
@@ -313,7 +313,7 @@ struct sock {
 	struct sock_common	__sk_common;
 #define sk_node			__sk_common.skc_node                   /* 加入监听队列的节点，tcp_prot->h.hashinfo->listening_hash[] */
 #define sk_nulls_node		__sk_common.skc_nulls_node         /* 加入established队列的节点，tcp_prot->h.hashinfo->ehash[] */
-#define sk_refcnt		__sk_common.skc_refcnt
+#define sk_refcnt		__sk_common.skc_refcnt                 /* 使用计数器 */
 #define sk_tx_queue_mapping	__sk_common.skc_tx_queue_mapping
 
 #define sk_dontcopy_begin	__sk_common.skc_dontcopy_begin
@@ -325,16 +325,16 @@ struct sock {
 #define sk_addrpair		__sk_common.skc_addrpair
 #define sk_daddr		__sk_common.skc_daddr                  /* 插口目的IP地址 */
 #define sk_rcv_saddr		__sk_common.skc_rcv_saddr          /* 插口源IP地址，本端的IP地址 */
-#define sk_family		__sk_common.skc_family                 /* AF_INET等 */
-#define sk_state		__sk_common.skc_state                  /* TCP_CLOSE等 */
+#define sk_family		__sk_common.skc_family                 /* 地址族，AF_INET等 */
+#define sk_state		__sk_common.skc_state                  /* 连接状态，TCP_CLOSE等 */
 #define sk_reuse		__sk_common.skc_reuse                  /* 端口是否可重用 */
 #define sk_reuseport		__sk_common.skc_reuseport          /* SO_REUSEPORT属性 */
 #define sk_ipv6only		__sk_common.skc_ipv6only
 #define sk_net_refcnt		__sk_common.skc_net_refcnt
 #define sk_bound_dev_if		__sk_common.skc_bound_dev_if       /* 绑定的接口 */
 #define sk_bind_node		__sk_common.skc_bind_node          /* hash节点，连接入绑定的hash链表 */
-#define sk_prot			__sk_common.skc_prot                   /* tcp_prot */
-#define sk_net			__sk_common.skc_net
+#define sk_prot			__sk_common.skc_prot                   /* 协议函数表，tcp_prot */
+#define sk_net			__sk_common.skc_net                    /* 所属的网络空间 */
 #define sk_v6_daddr		__sk_common.skc_v6_daddr
 #define sk_v6_rcv_saddr	__sk_common.skc_v6_rcv_saddr
 #define sk_cookie		__sk_common.skc_cookie
@@ -343,7 +343,7 @@ struct sock {
 #define sk_rxhash		__sk_common.skc_rxhash
 
 	socket_lock_t		sk_lock;
-	struct sk_buff_head	sk_receive_queue;
+	struct sk_buff_head	sk_receive_queue;       /* 接收队列 */
 	/*
 	 * The backlog queue is special, it is always used with
 	 * the per-socket spinlock held and requires low latency
@@ -355,11 +355,11 @@ struct sock {
 	struct {
 		atomic_t	rmem_alloc;
 		int		len;
-		struct sk_buff	*head;
-		struct sk_buff	*tail;
-	} sk_backlog;
-#define sk_rmem_alloc sk_backlog.rmem_alloc
-	int			sk_forward_alloc;
+		struct sk_buff	*head;     /* 最先收到的数据包 */
+		struct sk_buff	*tail;     /* 最后收到的数据包 */
+	} sk_backlog;                               /* backlog队列 */
+#define sk_rmem_alloc sk_backlog.rmem_alloc     /* 接收队列字节数 */
+	int			sk_forward_alloc;               /* 记录可用内存长度 */
 
 	__u32			sk_txhash;
 #ifdef CONFIG_NET_RX_BUSY_POLL
@@ -367,9 +367,9 @@ struct sock {
 	unsigned int		sk_ll_usec;
 #endif
 	atomic_t		sk_drops;
-	int			sk_rcvbuf;
+	int			sk_rcvbuf;                      /* 接收缓存长度 */
 
-	struct sk_filter __rcu	*sk_filter;         /* 挂接到插口的ebpf过滤程序 */
+	struct sk_filter __rcu	*sk_filter;         /* 插口过滤器，如ebpf程序 */
 	union {
 		struct socket_wq __rcu	*sk_wq;
 		struct socket_wq	*sk_wq_raw;
@@ -378,12 +378,12 @@ struct sock {
 	struct xfrm_policy __rcu *sk_policy[2];
 #endif
 	struct dst_entry	*sk_rx_dst;
-	struct dst_entry __rcu	*sk_dst_cache;
+	struct dst_entry __rcu	*sk_dst_cache;      /* 路由项缓存 */
 	/* Note: 32bit hole on 64bit arches */
-	atomic_t		sk_wmem_alloc;
-	atomic_t		sk_omem_alloc;
-	int			sk_sndbuf;
-	struct sk_buff_head	sk_write_queue;
+	atomic_t		sk_wmem_alloc;              /* 发送队列字节数 */
+	atomic_t		sk_omem_alloc;              /* */
+	int			sk_sndbuf;                      /* 发送缓存长度 */
+	struct sk_buff_head	sk_write_queue;         /* 发送队列 */
 
 	/*
 	 * Because of non atomicity rules, all
@@ -392,60 +392,60 @@ struct sock {
 	kmemcheck_bitfield_begin(flags);
 	unsigned int		sk_padding : 2,
 				sk_no_check_tx : 1,
-				sk_no_check_rx : 1,
-				sk_userlocks : 4,
-                sk_protocol  : 8,               /* 如IPPROTO_TCP */
-				sk_type      : 16;
+                sk_no_check_rx : 1,             /* */
+                sk_userlocks : 4,               /* */
+                sk_protocol  : 8,               /* 协议族协议，如IPPROTO_TCP */
+                sk_type      : 16;              /* socket类型，如SOCK_STREAM */
 #define SK_PROTOCOL_MAX U8_MAX
 	kmemcheck_bitfield_end(flags);
 
-	int			sk_wmem_queued;
-	gfp_t			sk_allocation;
+	int			sk_wmem_queued;                 /* 全部数据包占用的字节数 */
+	gfp_t			sk_allocation;              /* 内存分配模式 */
 	u32			sk_pacing_rate; /* bytes per second */
 	u32			sk_max_pacing_rate;
-	netdev_features_t	sk_route_caps;
+	netdev_features_t	sk_route_caps;          /* 路由兼容性标志位 */
 	netdev_features_t	sk_route_nocaps;
-	int			sk_gso_type;
-	unsigned int		sk_gso_max_size;
+	int			sk_gso_type;                    /* gso类型 */
+	unsigned int		sk_gso_max_size;        /* GSO最大长度*/
 	u16			sk_gso_max_segs;
-	int			sk_rcvlowat;
-	unsigned long	        sk_lingertime;
+	int			sk_rcvlowat;                    /* SO_REVLOWAT设置值 */
+	unsigned long	        sk_lingertime;      /* 停留时间，确定关闭时间 */
 	struct sk_buff_head	sk_error_queue;
-	struct proto		*sk_prot_creator;
+	struct proto		*sk_prot_creator;       /* */
 	rwlock_t		sk_callback_lock;
-	int			sk_err,
-				sk_err_soft;
+	int			sk_err,                         /* 出错码 */
+                sk_err_soft;                    /* 持续出现的错误 */
 	u32			sk_ack_backlog;                /* backlog连接计数 */
 	u32			sk_max_ack_backlog;            /* backlog连接上限，对应listen(, backlog) */
-	__u32			sk_priority;
+	__u32			sk_priority;               /* 优先级 */
 	__u32			sk_mark;
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
-	long			sk_rcvtimeo;
+	long			sk_rcvtimeo;               /* 接收报文的超时时限 */
 	long			sk_sndtimeo;               /* 发送报文的超时时限 */
 	struct timer_list	sk_timer;
-	ktime_t			sk_stamp;
+	ktime_t			sk_stamp;                  /* 最后接收数据包的时间 */
 	u16			sk_tsflags;
-	u8			sk_shutdown;
+	u8			sk_shutdown;                   /* 是否关闭，SEND_SHUTDOWN/RCV_SHUTDOWN */
 	u32			sk_tskey;
 	struct socket		*sk_socket;            /* 对应的bsd插口 */
-	void			*sk_user_data;
+	void			*sk_user_data;             /* RPC提供的数据 */
 	struct page_frag	sk_frag;
-	struct sk_buff		*sk_send_head;
+	struct sk_buff		*sk_send_head;         /* 发送数据包的队列头 */
 	__s32			sk_peek_off;
-	int			sk_write_pending;
+	int			sk_write_pending;              /* 等待发送的数量 */
 #ifdef CONFIG_SECURITY
 	void			*sk_security;
 #endif
 	struct sock_cgroup_data	sk_cgrp_data;
 	struct mem_cgroup	*sk_memcg;
-	void			(*sk_state_change)(struct sock *sk);
-	void			(*sk_data_ready)(struct sock *sk);
-	void			(*sk_write_space)(struct sock *sk);
-	void			(*sk_error_report)(struct sock *sk);
-	int			(*sk_backlog_rcv)(struct sock *sk,
+	void			(*sk_state_change)(struct sock *sk);  /* 状态改变回调 */
+	void			(*sk_data_ready)(struct sock *sk);    /* 数据处理后的回调 */
+	void			(*sk_write_space)(struct sock *sk);   /* 发送空间可用后的回调 */
+	void			(*sk_error_report)(struct sock *sk);  /* 处理错误的回调 */
+	int			(*sk_backlog_rcv)(struct sock *sk,        /* 处理库存数据包回调 */
 						  struct sk_buff *skb);
-	void                    (*sk_destruct)(struct sock *sk);
+	void                    (*sk_destruct)(struct sock *sk);  /* 销毁插口回调 */
 	struct sock_reuseport __rcu	*sk_reuseport_cb;
 	struct rcu_head		sk_rcu;
 };

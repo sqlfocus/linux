@@ -656,7 +656,7 @@ struct sk_buff {
 	 * want to keep them across layers you have to do a skb_clone()
 	 * first. This is owned by whoever has the skb queued ATM.
 	 */
-	char			cb[48] __aligned(8);
+	char			cb[48] __aligned(8);       /* 控制数据块儿，存放私有变量 */
 
 	unsigned long		_skb_refdst;
 	void			(*destructor)(struct sk_buff *skb);
@@ -669,10 +669,10 @@ struct sk_buff {
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 	struct nf_bridge_info	*nf_bridge;
 #endif
-	unsigned int		len,
-				data_len;
-	__u16			mac_len,
-				hdr_len;
+	unsigned int		len,             /* 全部数据块儿的总长度 */
+                data_len;                /* 分段、分散数据块儿的总长度 */
+	__u16			mac_len,             /* 链路层头部长度 */
+                hdr_len;                 /* 克隆数据包时，可写的头部长度 */
 
 	/* Following fields are _not_ copied in __copy_skb_header()
 	 * Note that queue_mapping is here mostly to fill a hole.
@@ -714,12 +714,12 @@ struct sk_buff {
 #define PKT_TYPE_OFFSET()	offsetof(struct sk_buff, __pkt_type_offset)
 
 	__u8			__pkt_type_offset[0];
-	__u8			pkt_type:3;
+	__u8			pkt_type:3;             /* 数据包类型 */
 	__u8			pfmemalloc:1;
 	__u8			ignore_df:1;
 	__u8			nfctinfo:3;
 
-	__u8			nf_trace:1;
+	__u8			nf_trace:1;             /* netfilter跟踪标志 */
 	__u8			ip_summed:2;
 	__u8			ooo_okay:1;
 	__u8			l4_hash:1;
@@ -755,13 +755,13 @@ struct sk_buff {
 #endif
 
 	union {
-		__wsum		csum;
+		__wsum		csum;                /* 校验和 */
 		struct {
-			__u16	csum_start;
+			__u16	csum_start;          /* */
 			__u16	csum_offset;
 		};
 	};
-	__u32			priority;
+	__u32			priority;            /* 数据包在队列中的优先级 */
 	int			skb_iif;                 /* 接收接口 */
 	__u32			hash;
 	__be16			vlan_proto;
@@ -790,10 +790,10 @@ struct sk_buff {
 	__u16			inner_network_header;
 	__u16			inner_mac_header;
 
-	__be16			protocol;
-	__u16			transport_header;
-	__u16			network_header;
-	__u16			mac_header;
+	__be16			protocol;          /* 底层驱动使用的数据包协议 */
+	__u16			transport_header;  /* 传输层头 */
+	__u16			network_header;    /* 网络层头 */
+	__u16			mac_header;        /* 链路层头 */
 
 	/* private: */
 	__u32			headers_end[0];
@@ -804,8 +804,8 @@ struct sk_buff {
 	sk_buff_data_t		end;    /* data/tail指向协议数据的起始，随着协议处理动态调整 */
 	unsigned char		*head,
 				*data;
-	unsigned int		truesize;
-	atomic_t		users;
+	unsigned int		truesize;  /* 数据包实际长度，结构＋数据块 */
+	atomic_t		users;         /* 数据包使用计数 */
 };
 
 #ifdef __KERNEL__

@@ -5,9 +5,25 @@
 本文档摘录linux的插口操作，以期对内核协议栈的了解更加深入，为日后工作中
 排出内核问题、性能调优等提供支撑！
 
+插口操作分为服务器、客户端；其中服务器对应的插口操作有socket()/bind()/
+listen()/accept()/read()/write()/close()，而客户端对应的插口操作有socket()/
+connect()/read()/write()/close()；后续分章节，以插口操作为入口点，打通
+linux的TCP/IP协议栈。
+
 * 初始化流程
 网络协议栈初始化的过程中，会注册内核支持的域、协议等信息，并设置对应的
 操作集合。
+  #+BEGIN_EXAMPLE
+  -start_kernel()                       ~/init/main.c
+    -rest_init()
+      -kernel_init()
+        -kernel_init_freeable()
+          -do_basic_setup()
+            -do_initcalls()
+              -sock_init()              注册并安装网络文件系统，(level 1),~/net/socket.c
+              -inet_init()              ipv4协议栈初始化，(level 5),~net/ipv4/af_inet.c
+  #+END_EXAMPLE
+
   #+BEGIN_EXAMPLE
   -inet_init()                          IPv4协议栈初始化入口，~net/ipv4/af_inet.c
     -proto_register()
@@ -123,7 +139,8 @@ protocol字段指定插口使用的协议，一般情况下在某个通信域内
     1-sock_create()                             创建插口结构，并初始化
       -__sock_create()
         -sock_alloc()
-          -this_cpu_add(sockets_in_use, 1)      分配struct socket，增加插口计数
+          -new_inode_pseudo()                   从sock网络文件系统分配struct socket_alloc
+          -this_cpu_add(sockets_in_use, 1)      增加插口计数
         -net_families[]->create()
         -->inet_create()                        调用对应domain的创建流程, 以AF_INET为例, ~/net/ipv4/af_inet.c
           -sk_alloc()                           分配struct sock
@@ -137,6 +154,7 @@ protocol字段指定插口使用的协议，一般情况下在某个通信域内
   #+END_EXAMPLE
 
 * bind()
+绑定插口地址
   #+BEGIN_EXAMPLE
   -SYSCALL_DEFINE3(bind,,,,,)                   bind()入口，~/net/socket.c
     -struct socket->ops->bind()
@@ -227,4 +245,5 @@ ab
 * TODO 快速打开fastopen
 ab
 
-
+* 参考
+ - [[追踪Linux TCPIP代码运行]]

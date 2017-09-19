@@ -28,7 +28,7 @@
  *	returned 0 we must skip the element, otherwise we got the reference.
  *	Once the reference is obtained we can drop the spinlock.
  */
-
+/* 注册到系统的文件系统类型链表 */
 static struct file_system_type *file_systems;
 static DEFINE_RWLOCK(file_systems_lock);
 
@@ -65,7 +65,7 @@ static struct file_system_type **find_filesystem(const char *name, unsigned len)
  *	structures and must not be freed until the file system has been
  *	unregistered.
  */
- 
+/* 注册文件系统类型 */ 
 int register_filesystem(struct file_system_type * fs)
 {
 	int res = 0;

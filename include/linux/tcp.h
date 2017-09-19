@@ -135,17 +135,18 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
 	return (struct tcp_request_sock *)req;
 }
 
+/* TCP协议相关的插口结构 */
 struct tcp_sock {
 	/* inet_connection_sock has to be the first member of tcp_sock */
 	struct inet_connection_sock	inet_conn;
-	u16	tcp_header_len;	/* Bytes of tcp header to send		*/
-	u16	gso_segs;	/* Max number of segs per GSO packet	*/
+	u16	tcp_header_len;	 /* 发送的tcp头部字节数	*/
+	u16	gso_segs;	     /* Max number of segs per GSO packet	*/
 
 /*
  *	Header prediction flags
  *	0x5?10 << 16 + snd_wnd in net byte order
  */
-	__be32	pred_flags;
+	__be32	pred_flags;  /* 头部预置位 */
 
 /*
  *	RFC793 variables by their proper names. This means you can
@@ -154,34 +155,34 @@ struct tcp_sock {
  */
 	u64	bytes_received;	/* RFC4898 tcpEStatsAppHCThruOctetsReceived
 				 * sum(delta(rcv_nxt)), or how many bytes
-				 * were acked.
+				 * were acked. 
 				 */
 	u32	segs_in;	/* RFC4898 tcpEStatsPerfSegsIn
 				 * total number of segments in.
-				 */
+				 */      /* 接收的报文计数 */
 	u32	data_segs_in;	/* RFC4898 tcpEStatsPerfDataSegsIn
 				 * total number of data segments in.
-				 */
- 	u32	rcv_nxt;	/* What we want to receive next 	*/
-	u32	copied_seq;	/* Head of yet unread data		*/
-	u32	rcv_wup;	/* rcv_nxt on last window update sent	*/
- 	u32	snd_nxt;	/* Next sequence we send		*/
+				 */      /* 接收的数据报文计数 */
+ 	u32	rcv_nxt;	/* 下一个待接收的序号，What we want to receive next */
+	u32	copied_seq;	/* 未读取的数据序号，Head of yet unread data */
+	u32	rcv_wup;	/* 上一次发送窗口更新时的rcv_nxt, rcv_nxt on last window update sent	*/
+ 	u32	snd_nxt;	/* 下一个待发送序号，Next sequence we send */
 	u32	segs_out;	/* RFC4898 tcpEStatsPerfSegsOut
 				 * The total number of segments sent.
-				 */
+				 */      /* 发送的报文计数 */
 	u32	data_segs_out;	/* RFC4898 tcpEStatsPerfDataSegsOut
 				 * total number of data segments sent.
-				 */
+				 */      /* 发送的数据报文计数 */
 	u64	bytes_acked;	/* RFC4898 tcpEStatsAppHCThruOctetsAcked
 				 * sum(delta(snd_una)), or how many bytes
 				 * were acked.
-				 */
+				 */      /* 已经ACK的字节数 */
 	struct u64_stats_sync syncp; /* protects 64bit vars (cf tcp_get_info()) */
 
- 	u32	snd_una;	/* First byte we want an ack for	*/
- 	u32	snd_sml;	/* Last byte of the most recently transmitted small packet */
-	u32	rcv_tstamp;	/* timestamp of last received ACK (for keepalives) */
-	u32	lsndtime;	/* timestamp of last sent data packet (for restart window) */
+ 	u32	snd_una;	/* 需要ack的第一个字节，First byte we want an ack for	*/
+ 	u32	snd_sml;	/* 最近发送数据包的尾字节，Last byte of the most recently transmitted small packet */
+	u32	rcv_tstamp;	/* 最后一次接收到ack的时间，timestamp of last received ACK (for keepalives) */
+	u32	lsndtime;	/* 最后一次发送数据包的时间，timestamp of last sent data packet (for restart window) */
 	u32	last_oow_ack_time;  /* timestamp of last out-of-window ACK */
 
 	u32	tsoffset;	/* timestamp offset */
@@ -196,15 +197,15 @@ struct tcp_sock {
 		struct msghdr		*msg;
 		int			memory;
 		int			len;
-	} ucopy;
+	} ucopy;        /* 复制给用户的数据 */
 
-	u32	snd_wl1;	/* Sequence for window update		*/
-	u32	snd_wnd;	/* The window we expect to receive	*/
+	u32	snd_wl1;	/* 窗口更新序号，Sequence for window update		*/
+	u32	snd_wnd;	/* 期待接收的窗口，The window we expect to receive	*/
 	u32	max_window;	/* Maximal window ever seen from peer	*/
 	u32	mss_cache;	/* Cached effective mss, not including SACKS */
 
-	u32	window_clamp;	/* Maximal window to advertise		*/
-	u32	rcv_ssthresh;	/* Current window clamp			*/
+	u32	window_clamp;	/* 对外公布的最大窗口，Maximal window to advertise		*/
+	u32	rcv_ssthresh;	/* 当前窗口，Current window clamp			*/
 
 	/* Information of the most recently (s)acked skb */
 	struct tcp_rack {
@@ -238,7 +239,7 @@ struct tcp_sock {
 	u32	rtt_seq;	/* sequence number to update rttvar	*/
 	struct  minmax rtt_min;
 
-	u32	packets_out;	/* Packets which are "in flight"	*/
+	u32	packets_out;	/* 处于飞行中的数据包数量，Packets which are "in flight"	*/
 	u32	retrans_out;	/* Retransmitted packets out		*/
 	u32	max_packets_out;  /* max packets_out in last window */
 	u32	max_packets_seq;  /* right edge of max_packets_out flight */
@@ -256,9 +257,9 @@ struct tcp_sock {
 
 /*
  *	Slow start and congestion control (see also Nagle, and Karn & Partridge)
- */
- 	u32	snd_ssthresh;	/* Slow start size threshold		*/
- 	u32	snd_cwnd;	/* Sending congestion window		*/
+ *//* 慢启动与阻塞控制 */
+ 	u32	snd_ssthresh;	/* 慢启动阈值，Slow start size threshold		*/
+ 	u32	snd_cwnd;	    /* 发送阻塞窗口，Sending congestion window		*/
 	u32	snd_cwnd_cnt;	/* Linear increase counter		*/
 	u32	snd_cwnd_clamp; /* Do not allow snd_cwnd to grow above this */
 	u32	snd_cwnd_used;
@@ -276,9 +277,9 @@ struct tcp_sock {
 	u32	rate_interval_us;  /* saved rate sample: time elapsed */
 
  	u32	rcv_wnd;	/* Current receiver window		*/
-	u32	write_seq;	/* Tail(+1) of data held in tcp send buffer */
+	u32	write_seq;	/* 发送数据序号，Tail(+1) of data held in tcp send buffer */
 	u32	notsent_lowat;	/* TCP_NOTSENT_LOWAT */
-	u32	pushed_seq;	/* Last pushed seq, required to talk to windows */
+	u32	pushed_seq;	/* 最后送出的序号，Last pushed seq, required to talk to windows */
 	u32	lost_out;	/* Lost packets			*/
 	u32	sacked_out;	/* SACK'd packets			*/
 	u32	fackets_out;	/* FACK'd packets			*/
@@ -329,14 +330,14 @@ struct tcp_sock {
 		u32	time;
 	} rcv_rtt_est;
 
-/* Receiver queue space */
+/* 接收队列空间，Receiver queue space */
 	struct {
 		int	space;
 		u32	seq;
 		u32	time;
 	} rcvq_space;
 
-/* TCP-specific MTU probe information. */
+/* MTU探测信息，TCP-specific MTU probe information. */
 	struct {
 		u32		  probe_seq_start;
 		u32		  probe_seq_end;

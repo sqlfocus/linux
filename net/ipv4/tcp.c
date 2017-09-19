@@ -413,7 +413,7 @@ void tcp_init_sock(struct sock *sk)
 
 	tp->tsoffset = 0;
 
-	sk->sk_state = TCP_CLOSE;
+	sk->sk_state = TCP_CLOSE;           /* 设置链接状态 */
 
 	sk->sk_write_space = sk_stream_write_space;
 	sock_set_flag(sk, SOCK_USE_WRITE_QUEUE);

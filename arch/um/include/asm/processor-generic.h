@@ -69,9 +69,15 @@ static inline void mm_copy_segments(struct mm_struct *from_mm,
 
 /*
  * User space process size: 3GB (default).
- */
-extern unsigned long task_size;
+ *//* linux内核将虚拟地址空间分为两部分，内核空间＋用户空间；以TASK_SIZE分界，
+一般32位系统此值为3g；
 
+另外，地址空间和cpu特权级别存在关联；IA-32系统分4个等级，但linux仅利用了0和3,
+分别对应内核态和用户态；两种状态的差别，主要在对高于TASK_SIZE的内存区域的访问
+：用户态禁止访问内核空间。
+
+从用户态到内核态切换需借助系统调用实现。 */
+extern unsigned long task_size;
 #define TASK_SIZE (task_size)
 
 #undef STACK_TOP

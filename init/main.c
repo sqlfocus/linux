@@ -776,7 +776,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	if (initcall_debug)
 		ret = do_one_initcall_debug(fn);
 	else
-		ret = fn();
+		ret = fn();               /* 最终调用初始化函数 */
 
 	msgbuf[0] = 0;
 
@@ -794,7 +794,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	return ret;
 }
 
-
+/* 启动初始化函数的地址指针数组；由连接器链接到对应的下述标签 */
 extern initcall_t __initcall_start[];
 extern initcall_t __initcall0_start[];
 extern initcall_t __initcall1_start[];
@@ -842,7 +842,7 @@ static void __init do_initcall_level(int level)
 		   NULL, &repair_env_string);
 
 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
-		do_one_initcall(*fn);
+		do_one_initcall(*fn);          /* 逐个调用初始化函数 */
 }
 
 static void __init do_initcalls(void)
@@ -868,7 +868,8 @@ static void __init do_basic_setup(void)
 	init_irq_proc();
 	do_ctors();
 	usermodehelper_enable();
-	do_initcalls();
+	do_initcalls();             /* 调用注册的初始化函数，__initcall_start ~
+                                   __initcall_end之间为注册的初始化函数指针 */
 	random_int_secret_init();
 }
 

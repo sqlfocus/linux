@@ -2037,11 +2037,11 @@ struct file_system_type {
 #define FS_USERNS_MOUNT		8	/* Can be mounted by userns root */
 #define FS_RENAME_DOES_D_MOVE	32768	/* FS will handle d_move() during rename() internally. */
 	struct dentry *(*mount) (struct file_system_type *, int,
-		       const char *, void *);
+                             const char *, void *);   /* 挂载动作 */
 	void (*kill_sb) (struct super_block *);
 	struct module *owner;
 	struct file_system_type * next;
-	struct hlist_head fs_supers;        /* 连接挂载的所有此类型的文件系统实例 */
+	struct hlist_head fs_supers;      /* 连接挂载的所有此类型的文件系统实例 */
 
 	struct lock_class_key s_lock_key;
 	struct lock_class_key s_umount_key;

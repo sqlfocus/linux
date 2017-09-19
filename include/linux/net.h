@@ -92,8 +92,8 @@ enum sock_shutdown_cmd {
 
 struct socket_wq {
 	/* Note: wait MUST be first field of socket_wq */
-	wait_queue_head_t	wait;
-	struct fasync_struct	*fasync_list;
+	wait_queue_head_t	wait;             /* 等待队列 */
+	struct fasync_struct	*fasync_list; /* 异步唤醒队列 */
 	unsigned long		flags; /* %SOCKWQ_ASYNC_NOSPACE, etc */
 	struct rcu_head		rcu;
 } ____cacheline_aligned_in_smp;
@@ -107,7 +107,7 @@ struct socket_wq {
  *  @file: File back pointer for gc
  *  @sk: internal networking protocol agnostic socket representation
  *  @wq: wait queue for several uses
- *//* BSD socket层，与协议无关，提供一层统一用户接口；与协议相关的记录在struct sock */
+ *//* BSD socket层，与协议无关，提供统一用户接口；与协议相关的记录在struct sock */
 struct socket {
 	socket_state		state;         /* enum socket_state; 插口状态 */
 
@@ -117,7 +117,7 @@ struct socket {
 
 	unsigned long		flags;         /* 仅支持SOCK_NONBLOCK、SOCK_CLOEXEC */
 
-	struct socket_wq __rcu	*wq;       /* */
+	struct socket_wq __rcu	*wq;       /* 队列 */
 
 	struct file		*file;             /* 指向对应的文件结构，file->private_data指向本结构 */
 	struct sock		*sk;               /* 特定于协议的插口信息结构 */

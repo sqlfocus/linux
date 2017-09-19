@@ -136,7 +136,7 @@ static ssize_t sock_splice_read(struct file *file, loff_t *ppos,
  *	Socket files have a set of 'special' operations as well as the generic file ones. These don't appear
  *	in the operation structures but are done directly via the socketcall() multiplexor.
  */
-
+/* socket插口文件操作函数表，以支撑read()/write()操作 */
 static const struct file_operations socket_file_ops = {
 	.owner =	THIS_MODULE,
 	.llseek =	no_llseek,
@@ -240,18 +240,18 @@ static int move_addr_to_user(struct sockaddr_storage *kaddr, int klen,
 	return __put_user(klen, ulen);
 }
 
+/* 高速缓存，基本单元struct socket_alloc，绑定socket和对应的inode节点 */
 static struct kmem_cache *sock_inode_cachep __read_mostly;
-
 static struct inode *sock_alloc_inode(struct super_block *sb)
 {
 	struct socket_alloc *ei;
 	struct socket_wq *wq;
 
 	ei = kmem_cache_alloc(sock_inode_cachep, GFP_KERNEL);
-	if (!ei)
+	if (!ei)                              /* 分配插口＋节点 */
 		return NULL;
 	wq = kmalloc(sizeof(*wq), GFP_KERNEL);
-	if (!wq) {
+	if (!wq) {                            /* 分配等待队列 */
 		kmem_cache_free(sock_inode_cachep, ei);
 		return NULL;
 	}
@@ -260,7 +260,7 @@ static struct inode *sock_alloc_inode(struct super_block *sb)
 	wq->flags = 0;
 	RCU_INIT_POINTER(ei->socket.wq, wq);
 
-	ei->socket.state = SS_UNCONNECTED;
+	ei->socket.state = SS_UNCONNECTED;    /* 初始化socket链接状态 */
 	ei->socket.flags = 0;
 	ei->socket.ops = NULL;
 	ei->socket.sk = NULL;
@@ -300,7 +300,7 @@ static int init_inodecache(void)
 		return -ENOMEM;
 	return 0;
 }
-
+/* sock文件系统(sockfs)超级块儿操作函数集合，创建socket节点时利用此结构 */
 static const struct super_operations sockfs_ops = {
 	.alloc_inode	= sock_alloc_inode,
 	.destroy_inode	= sock_destroy_inode,
@@ -354,11 +354,12 @@ static struct dentry *sockfs_mount(struct file_system_type *fs_type,
 				  &sockfs_dentry_operations, SOCKFS_MAGIC);
 }
 
+/* sock文件系统的挂载点，根节点 */
 static struct vfsmount *sock_mnt __read_mostly;
-
+/* 网络文件系统：没有真实的物理介质，为虚拟文件系统 */
 static struct file_system_type sock_fs_type = {
 	.name =		"sockfs",
-	.mount =	sockfs_mount,
+	.mount =	sockfs_mount,      /* 挂载文件系统的回调函数 */
 	.kill_sb =	kill_anon_super,
 };
 
@@ -393,14 +394,14 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 		name.len = strlen(name.name);
 	}
 	path.dentry = d_alloc_pseudo(sock_mnt->mnt_sb, &name);
-	if (unlikely(!path.dentry))
+	if (unlikely(!path.dentry)) /* 创建目录项 */
 		return ERR_PTR(-ENOMEM);
 	path.mnt = mntget(sock_mnt);
 
 	d_instantiate(path.dentry, SOCK_INODE(sock));
 
 	file = alloc_file(&path, FMODE_READ | FMODE_WRITE,
-		  &socket_file_ops);
+          &socket_file_ops);    /* 分配文件，操作集合socket_file_ops */
 	if (IS_ERR(file)) {
 		/* drop dentry, keep inode */
 		ihold(d_inode(path.dentry));
@@ -408,7 +409,7 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 		return file;
 	}
 
-	sock->file = file;
+	sock->file = file;          /* 关联struct socket和struct file */
 	file->f_flags = O_RDWR | (flags & O_NONBLOCK);
 	file->private_data = sock;
 	return file;
@@ -419,12 +420,12 @@ static int sock_map_fd(struct socket *sock, int flags)
 {
 	struct file *newfile;
 	int fd = get_unused_fd_flags(flags);
-	if (unlikely(fd < 0))
+	if (unlikely(fd < 0))               /* 分配文件描述符 */
 		return fd;
 
 	newfile = sock_alloc_file(sock, flags, NULL);
-	if (likely(!IS_ERR(newfile))) {
-		fd_install(fd, newfile);
+	if (likely(!IS_ERR(newfile))) {     /* 分配文件 */
+		fd_install(fd, newfile);        /* 关联fd和file */
 		return fd;
 	}
 
@@ -480,7 +481,7 @@ static struct socket *sockfd_lookup_light(int fd, int *err, int *fput_needed)
 
 	*err = -EBADF;
 	if (f.file) {
-		sock = sock_from_file(f.file, err);
+		sock = sock_from_file(f.file, err);   /* struct file->private_data */
 		if (likely(sock)) {
 			*fput_needed = f.flags;
 			return sock;
@@ -535,10 +536,10 @@ struct socket *sock_alloc(void)
 	struct socket *sock;
 
 	inode = new_inode_pseudo(sock_mnt->mnt_sb);
-	if (!inode)             /* 分配struct socket_alloc，强制关联socket和inode */
-		return NULL;
+	if (!inode)             /* 最终调用sock网络文件系统的超级块儿操作函数 sock_alloc_inode() */
+		return NULL;        /* 分配struct socket_alloc */
 
-	sock = SOCKET_I(inode);
+	sock = SOCKET_I(inode); /* 取得socket结构指针 */
 
 	kmemcheck_annotate_bitfield(sock, type);
 	inode->i_ino = get_next_ino();
@@ -1080,7 +1081,7 @@ EXPORT_SYMBOL(sock_wake_async);
 
 /* 创建插口结构的入口函数
    @param, net, 本进程的网络空间(net namespace)
-   @param, kern, 是否为内核空间??? */
+   @param, kern, 创建者是否为内核进程 */
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
 {
@@ -1136,7 +1137,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 		request_module("net-pf-%d", family);
 #endif
 
-	rcu_read_lock();              /* 获取对应的域描述结构，如inet_family_ops */
+	rcu_read_lock();              /* 获取对应的域(AF_INET)描述结构，如inet_family_ops */
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
 	if (!pf)
@@ -1152,7 +1153,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/* Now protected by module ref count */
 	rcu_read_unlock();
 
-                                  /* 调用对应域的创建函数，如inet_create() */
+                                  /* 调用对应域的创建函数，如AF_INET对应 inet_create() */
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;
@@ -1172,7 +1173,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	err = security_socket_post_create(sock, family, type, protocol, kern);
 	if (err)
 		goto out_sock_release;
-	*res = sock;
+	*res = sock;                  /* 返回创建的socket */
 
 	return 0;
 
@@ -1230,11 +1231,11 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 	if (retval < 0)
 		goto out;
 
-    /* 建立对应的文件描述符，并建立对应关系，struct file->private_data和struct socket->file互指 */
+    /* 在网络文件系统申请文件号，分配文件描述符，并与新创建的sock建立对应关系，
+       struct file->private_data和struct socket->file互指 */
 	retval = sock_map_fd(sock, flags & (O_CLOEXEC | O_NONBLOCK));
 	if (retval < 0)
 		goto out_release;
-
 out:
 	/* It may be already another descriptor 8) Not kernel problem. */
 	return retval;
@@ -2432,7 +2433,7 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
  *	advertise its address family, and have it linked into the
  *	socket interface. The value ops->family corresponds to the
  *	socket system call protocol family.
- */
+ *//* 注册插口域对应的协议族操作表 */
 int sock_register(const struct net_proto_family *ops)
 {
 	int err;
@@ -2447,7 +2448,7 @@ int sock_register(const struct net_proto_family *ops)
 				      lockdep_is_held(&net_family_lock)))
 		err = -EEXIST;
 	else {
-		rcu_assign_pointer(net_families[ops->family], ops);
+		rcu_assign_pointer(net_families[ops->family], ops);   /* 注册 */
 		err = 0;
 	}
 	spin_unlock(&net_family_lock);
@@ -2503,12 +2504,12 @@ static int __init sock_init(void)
 	 *      Initialize the protocols module.
 	 */
 
-	init_inodecache();
+	init_inodecache();                          /* 关联网络文件节点与socket结构的高速缓存 */
 
-	err = register_filesystem(&sock_fs_type);
+	err = register_filesystem(&sock_fs_type);   /* 注册网络文件系统 */
 	if (err)
 		goto out_fs;
-	sock_mnt = kern_mount(&sock_fs_type);
+	sock_mnt = kern_mount(&sock_fs_type);       /* 安装网络文件系统 */
 	if (IS_ERR(sock_mnt)) {
 		err = PTR_ERR(sock_mnt);
 		goto out_mount;
@@ -2533,7 +2534,12 @@ out_mount:
 out_fs:
 	goto out;
 }
-
+/* initcall机制，注册初始化函数，系统启动时被调用start_kernel()|init/main.c
+                                                  ->rest_init()
+                                                  ->kernel_init()
+                                                  ->kernel_init_freeable()
+                                                  ->do_basic_setup()
+                                                  ->do_initcalls() */
 core_initcall(sock_init);	/* early initcall */
 
 #ifdef CONFIG_PROC_FS

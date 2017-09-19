@@ -1322,13 +1322,13 @@ static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
 	struct kmem_cache *slab;
 
 	slab = prot->slab;
-	if (slab != NULL) {
+	if (slab != NULL) {   /* 提供了缓存，在高速缓存分配 */
 		sk = kmem_cache_alloc(slab, priority & ~__GFP_ZERO);
 		if (!sk)
 			return sk;
 		if (priority & __GFP_ZERO)
 			sk_prot_clear_nulls(sk, prot->obj_size);
-	} else
+	} else                /* 从普通内存分配 */
 		sk = kmalloc(prot->obj_size, priority);
 
 	if (sk != NULL) {
@@ -1392,12 +1392,12 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 		 * See comment in struct sock definition to understand
 		 * why we need sk_prot_creator -acme
 		 */
-		sk->sk_prot = sk->sk_prot_creator = prot;
+		sk->sk_prot = sk->sk_prot_creator = prot;    /* 如，赋值tcp_prot */
 		sock_lock_init(sk);
 		sk->sk_net_refcnt = kern ? 0 : 1;
 		if (likely(sk->sk_net_refcnt))
 			get_net(net);
-		sock_net_set(sk, net);
+		sock_net_set(sk, net);                       /* 记录对应的网络空间 */
 		atomic_set(&sk->sk_wmem_alloc, 1);
 
 		mem_cgroup_sk_alloc(sk);
@@ -2442,7 +2442,7 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 			af_callback_keys + sk->sk_family,
 			af_family_clock_key_strings[sk->sk_family]);
 
-	sk->sk_state_change	=	sock_def_wakeup;
+	sk->sk_state_change	=	sock_def_wakeup;       /* 插口状态变更处理函数 */
 	sk->sk_data_ready	=	sock_def_readable;
 	sk->sk_write_space	=	sock_def_write_space;
 	sk->sk_error_report	=	sock_def_error_report;

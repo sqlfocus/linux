@@ -500,7 +500,7 @@ int __init early_irq_init(void)
 }
 
 #else /* !CONFIG_SPARSE_IRQ */
-
+/* 默认中断处理函数表 */
 struct irq_desc irq_desc[NR_IRQS] __cacheline_aligned_in_smp = {
 	[0 ... NR_IRQS-1] = {
 		.handle_irq	= handle_bad_irq,

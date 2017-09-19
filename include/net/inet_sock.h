@@ -197,7 +197,7 @@ struct inet_sock {
 	__u8			tos;
 	__u8			min_ttl;
 	__u8			mc_ttl;
-	__u8			pmtudisc;
+	__u8			pmtudisc;                   /* 是否需要路径mtu(PMTU)自发现 */
 	__u8			recverr:1,
                 is_icsk:1,                      /* 是否为面向连接的插口 */
 				freebind:1,

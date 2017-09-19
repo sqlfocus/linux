@@ -208,7 +208,7 @@ extern void proc_sched_set_task(struct task_struct *p);
 #define TASK_INTERRUPTIBLE	1           /* 等待事件而睡眠的进程 */
 #define TASK_UNINTERRUPTIBLE	2       /* 不能被中断的睡眠状态 */
 #define __TASK_STOPPED		4           /* 有目的的暂停 */
-#define __TASK_TRACED		8           /* 区分__TASK_STOPPED中的被追踪 */
+#define __TASK_TRACED		8           /* 区分__TASK_STOPPED中的被追踪进程 */
 /* in tsk->exit_state */
 #define EXIT_DEAD		16              /* wait()调用后，内存彻底清理前 */
 #define EXIT_ZOMBIE		32              /* 进程退出后，wait()调用前 */
@@ -1672,7 +1672,7 @@ struct task_struct {
 					 * credentials (COW) */
 	const struct cred __rcu *cred;	/* effective (overridable) subjective task
 					 * credentials (COW) */
-	char comm[TASK_COMM_LEN]; /* executable name excluding path
+	char comm[TASK_COMM_LEN]; /* 除去路径后的可执行文件名，executable name excluding path
 				     - access with [gs]et_task_comm (which lock
 				       it with task_lock())
 				     - initialized normally by setup_new_exec */

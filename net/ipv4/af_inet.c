@@ -124,7 +124,7 @@
 
 /* The inetsw table contains everything that inet_create needs to
  * build a new socket.
- */
+ *//* 内核支持的L4层传输协议描述结构 */
 static struct list_head inetsw[SOCK_MAX];
 static DEFINE_SPINLOCK(inetsw_lock);
 
@@ -256,8 +256,9 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
-
-	sock->state = SS_UNCONNECTED;                  /* 插口未连接状态 */
+    
+    /* 设置插口状态：未连接 */
+	sock->state = SS_UNCONNECTED;
 
 	/* 查找是否有对应的四层传输协议？ */
 lookup_protocol:
@@ -322,7 +323,7 @@ lookup_protocol:
 		goto out;
 
 	err = 0;
-	if (INET_PROTOSW_REUSE & answer_flags)
+	if (INET_PROTOSW_REUSE & answer_flags)     /* 设置端口可重用标识 */
 		sk->sk_reuse = SK_CAN_REUSE;
 
 	inet = inet_sk(sk);                        /* 聚合方式的类型强制转换 */
@@ -336,7 +337,7 @@ lookup_protocol:
 			inet->hdrincl = 1;
 	}
 
-	if (net->ipv4.sysctl_ip_no_pmtu_disc)
+	if (net->ipv4.sysctl_ip_no_pmtu_disc)      /* 路径MTU自发现 */
 		inet->pmtudisc = IP_PMTUDISC_DONT;
 	else
 		inet->pmtudisc = IP_PMTUDISC_WANT;
@@ -374,7 +375,7 @@ lookup_protocol:
 		}
 	}
 
-	if (sk->sk_prot->init) {                 /* 协议相关信息初始化, 以tcp为例 */
+	if (sk->sk_prot->init) {                 /* 传输层相关信息初始化, 以tcp为例 */
 		err = sk->sk_prot->init(sk);         /* tcp_prot->init = tcp_v4_init_sock() */
 		if (err)
 			sk_common_release(sk);
@@ -993,15 +994,16 @@ static const struct proto_ops inet_sockraw_ops = {
 #endif
 };
 
+/* AF_INET域对应的协议族操作表 */
 static const struct net_proto_family inet_family_ops = {
-	.family = PF_INET,
+	.family = PF_INET,            /* =AF_INET */
 	.create = inet_create,
 	.owner	= THIS_MODULE,
 };
 
 /* Upon startup we insert all the elements in inetsw_array[] into
  * the linked list inetsw.
- */
+ *//* 内核内置的L4层协议描述 */
 static struct inet_protosw inetsw_array[] =
 {
 	{
@@ -1010,7 +1012,7 @@ static struct inet_protosw inetsw_array[] =
 		.prot =       &tcp_prot,           /* 具体四层协议处理接口，协议相关 */
 		.ops =        &inet_stream_ops,    /* socket处理接口，协议无关 */
 		.flags =      INET_PROTOSW_PERMANENT |
-                      INET_PROTOSW_ICSK,   /* 标识 */
+                      INET_PROTOSW_ICSK,   /* 面向链接，且不可移除 */
 	},
 
 	{
@@ -1038,8 +1040,9 @@ static struct inet_protosw inetsw_array[] =
        }
 };
 
+/* 内核内置的L4层协议描述结构 */
 #define INETSW_ARRAY_LEN ARRAY_SIZE(inetsw_array)
-
+/* 注册内核支持的L4层传输协议 */
 void inet_register_protosw(struct inet_protosw *p)
 {
 	struct list_head *lh;
@@ -1070,7 +1073,7 @@ void inet_register_protosw(struct inet_protosw *p)
 	 * non-permanent entry.  This means that when we remove this entry, the
 	 * system automatically returns to the old behavior.
 	 */
-	list_add_rcu(&p->list, last_perm);
+	list_add_rcu(&p->list, last_perm);        /* 插入队列 */
 out:
 	spin_unlock_bh(&inetsw_lock);
 
@@ -1792,7 +1795,7 @@ static int __init inet_init(void)
 	/*
 	 *	Tell SOCKET that we are alive...
 	 */
-    /* 注册AF_INET域对应的操作集合 */
+    /* 注册AF_INET域对应的协议族操作表 */
 	(void)sock_register(&inet_family_ops);
 
 #ifdef CONFIG_SYSCTL
@@ -1814,7 +1817,7 @@ static int __init inet_init(void)
 		pr_crit("%s: Cannot add IGMP protocol\n", __func__);
 #endif
 
-	/* 注册插口操作所需要的关联信息，包括对应的插口类型、操作接口等，
+	/* 注册内核支持的L4层协议结构，
        Register the socket-side information for inet_create. */
 	for (r = &inetsw[0]; r < &inetsw[SOCK_MAX]; ++r)
 		INIT_LIST_HEAD(r);
